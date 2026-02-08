@@ -1,0 +1,4 @@
+../Core/Src/motor_driver.c:22:6:Motor_Create	2
+../Core/Src/motor_driver.c:33:6:handle_command	20
+../Core/Src/motor_driver.c:162:5:parse_cmd	7
+../Core/Src/motor_driver.c:184:6:Motor_SetOutput	10

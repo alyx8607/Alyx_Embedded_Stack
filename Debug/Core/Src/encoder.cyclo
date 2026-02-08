@@ -1,0 +1,9 @@
+../Core/Src/encoder.c:14:6:Queue_init	1
+../Core/Src/encoder.c:19:6:enqueue	3
+../Core/Src/encoder.c:31:7:dequeue	3
+../Core/Src/encoder.c:46:6:MA_init	9
+../Core/Src/encoder.c:76:7:calc_MA	4
+../Core/Src/encoder.c:90:6:Encoder_free	1
+../Core/Src/encoder.c:95:6:Encoder_Create	2
+../Core/Src/encoder.c:107:6:Encoder_Start	2
+../Core/Src/encoder.c:145:7:Encoder_GetSpeedRPM	1

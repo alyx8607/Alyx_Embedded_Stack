@@ -1,0 +1,8 @@
+../Core/Src/pid_controller.c:12:6:PID_Create	32	static
+../Core/Src/pid_controller.c:34:7:PID_Compute	72	static
+../Core/Src/pid_controller.c:95:6:PID_SetTunings	24	static
+../Core/Src/pid_controller.c:103:6:PID_SetOutputLimits	24	static
+../Core/Src/pid_controller.c:111:6:PID_SetDeadbands	24	static
+../Core/Src/pid_controller.c:117:6:PID_SetIntegralDecay	16	static
+../Core/Src/pid_controller.c:122:6:PID_SetMaxSlewRate	16	static
+../Core/Src/pid_controller.c:127:6:PID_Reset	16	static
