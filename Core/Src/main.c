@@ -364,39 +364,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	if (control_loop){
-//		b1_current_rpm = Encoder_GetSpeedRPM(&E1);
-//		b1_control_signal = PID_Compute(&pid_b1, (float)b1_target_rpm, b1_current_rpm);
-//		Motor_SetOutput(&B1, b1_control_signal);
-//		b2_current_rpm = Encoder_GetSpeedRPM(&E2);
-//		b2_control_signal = PID_Compute(&pid_b2, (float)b2_target_rpm, b2_current_rpm);
-//		//b2_control_signal = map_rpm_to_signal((float)b2_target_rpm);
-//		Motor_SetOutput(&B2, b2_control_signal);
-//		b3_current_rpm = Encoder_GetSpeedRPM(&E3);
-//		b3_control_signal = PID_Compute(&pid_b3, (float)b3_target_rpm, b3_current_rpm);
-//		Motor_SetOutput(&B3, b3_control_signal);
-//		b4_current_rpm = Encoder_GetSpeedRPM(&E4);
-//		b4_control_signal = PID_Compute(&pid_b4, (float)b4_target_rpm, b4_current_rpm);
-//		Motor_SetOutput(&B4, b4_control_signal);
-//		control_loop = 0;
-//	}
-
 	if (control_loop){
 		b1_current_rpm = Encoder_GetSpeedRPM(&E1);
 		b1_control_signal = PID_Compute(&pid_b1, (float)b1_target_rpm, b1_current_rpm);
-		// --- TELEMETRY TRANSMISSION START ---
-		// Format: "Target,Current"
-		char telemetry_buf[64];
-
-		// Fixed: Only passing 2 arguments to match "T:%d C:%.2f"
-		int len = snprintf(telemetry_buf, sizeof(telemetry_buf),
-						   "%.2f,%d\r\n",
-						   b2_current_rpm, b2_target_rpm);
-
-		// Transmit via UART5
-		HAL_UART_Transmit(&huart5, (uint8_t*)telemetry_buf, len, 10);
-		// --- TELEMETRY TRANSMISSION END -----
-		//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
 		Motor_SetOutput(&B1, b1_control_signal);
 		b2_current_rpm = Encoder_GetSpeedRPM(&E2);
 		b2_control_signal = PID_Compute(&pid_b2, (float)b2_target_rpm, b2_current_rpm);
@@ -410,6 +380,36 @@ int main(void)
 		Motor_SetOutput(&B4, b4_control_signal);
 		control_loop = 0;
 	}
+
+//	if (control_loop){
+//		b1_current_rpm = Encoder_GetSpeedRPM(&E1);
+//		b1_control_signal = PID_Compute(&pid_b1, (float)b1_target_rpm, b1_current_rpm);
+//		// --- TELEMETRY TRANSMISSION START ---
+//		// Format: "Target,Current"
+//		char telemetry_buf[64];
+//
+//		// Fixed: Only passing 2 arguments to match "T:%d C:%.2f"
+//		int len = snprintf(telemetry_buf, sizeof(telemetry_buf),
+//						   "%.2f,%d\r\n",
+//						   b2_current_rpm, b2_target_rpm);
+//
+//		// Transmit via UART5
+//		HAL_UART_Transmit(&huart5, (uint8_t*)telemetry_buf, len, 10);
+//		// --- TELEMETRY TRANSMISSION END -----
+//		//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
+//		Motor_SetOutput(&B1, b1_control_signal);
+//		b2_current_rpm = Encoder_GetSpeedRPM(&E2);
+//		b2_control_signal = PID_Compute(&pid_b2, (float)b2_target_rpm, b2_current_rpm);
+//		//b2_control_signal = map_rpm_to_signal((float)b2_target_rpm);
+//		Motor_SetOutput(&B2, b2_control_signal);
+//		b3_current_rpm = Encoder_GetSpeedRPM(&E3);
+//		b3_control_signal = PID_Compute(&pid_b3, (float)b3_target_rpm, b3_current_rpm);
+//		Motor_SetOutput(&B3, b3_control_signal);
+//		b4_current_rpm = Encoder_GetSpeedRPM(&E4);
+//		b4_control_signal = PID_Compute(&pid_b4, (float)b4_target_rpm, b4_current_rpm);
+//		Motor_SetOutput(&B4, b4_control_signal);
+//		control_loop = 0;
+//	}
 
   }
 
