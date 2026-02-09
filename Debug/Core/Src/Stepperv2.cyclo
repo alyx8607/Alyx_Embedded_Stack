@@ -7,9 +7,9 @@
 ../Core/Src/Stepperv2.c:98:6:sendPulses	2
 ../Core/Src/Stepperv2.c:114:6:moveAngle	3
 ../Core/Src/Stepperv2.c:138:6:moveAngleAbsolute	4
-../Core/Src/Stepperv2.c:152:6:Stepper_Enable	2
-../Core/Src/Stepperv2.c:158:6:Stepper_Disable	1
-../Core/Src/Stepperv2.c:162:6:initWQueue	2
-../Core/Src/Stepperv2.c:171:6:enqueueW	3
-../Core/Src/Stepperv2.c:184:9:dequeueW	3
-../Core/Src/Stepperv2.c:202:9:WisEmpty	1
+../Core/Src/Stepperv2.c:151:6:Stepper_Enable	2
+../Core/Src/Stepperv2.c:157:6:Stepper_Disable	1
+../Core/Src/Stepperv2.c:161:6:initWQueue	2
+../Core/Src/Stepperv2.c:170:6:enqueueW	3
+../Core/Src/Stepperv2.c:183:9:dequeueW	3
+../Core/Src/Stepperv2.c:201:9:WisEmpty	1

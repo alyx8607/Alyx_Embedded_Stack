@@ -113,11 +113,11 @@ void sendPulses(Stepper_Handle_t* stepper, uint32_t pulses, float rpm){
 
 void moveAngle(Stepper_Handle_t* stepper, float degree, float rpm){
 	if (degree >=0) {
-		HAL_GPIO_WritePin(stepper->step_dir_port, stepper->step_dir_pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(stepper->step_dir_port, stepper->step_dir_pin, GPIO_PIN_RESET);
 		stepper->dir = 1;
 	}
 	else{
-		HAL_GPIO_WritePin(stepper->step_dir_port, stepper->step_dir_pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(stepper->step_dir_port, stepper->step_dir_pin, GPIO_PIN_SET);
 		stepper->dir = -1;
 	}
 	delay_us(5);
@@ -138,7 +138,6 @@ void moveAngle(Stepper_Handle_t* stepper, float degree, float rpm){
 void moveAngleAbsolute(Stepper_Handle_t* stepper, float absolute_angle, float rpm){
 	float targetAngle_360 = fmodf(absolute_angle + 360.0f, 360.0f);
 	float currAngle_360   = fmodf(stepper->absolute_angle + 360.0f, 360.0f); //conversion to 360
-
 
 	float delta = targetAngle_360 - currAngle_360;
 	if (fabs(delta) < (float) 360.0f/stepper->steps_per_rev) return; //if movement is lesser than motor resolution can handle, just skip

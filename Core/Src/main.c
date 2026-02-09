@@ -138,6 +138,8 @@ volatile uint8_t moveStepper1;
 volatile uint8_t moveStepper2;
 volatile uint8_t moveStepper3;
 volatile uint8_t moveStepper4;
+
+uint8_t operating_mode = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
