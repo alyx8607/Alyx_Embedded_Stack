@@ -51,6 +51,8 @@ typedef struct{
 	//Absolute angle stuff
 	long abs_step_count;
 	float absolute_angle;
+	uint8_t rpm_smoothening; //experimental mode, not sure if working or not yet
+	int offset;
 } Stepper_Handle_t;
 
 extern Stepper_Handle_t S1;
@@ -67,7 +69,8 @@ void Stepper_Create(
     GPIO_TypeDef* ena_port,
     uint16_t ena_pin,
     uint16_t steps_per_rev,
-    uint8_t queueMode
+    uint8_t queueMode,
+	uint8_t rpm_smoothening
 );
 
 void initTimer(Stepper_Handle_t* handle);

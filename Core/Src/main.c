@@ -82,6 +82,7 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim8;
 TIM_HandleTypeDef htim15;
 TIM_HandleTypeDef htim16;
@@ -138,8 +139,6 @@ volatile uint8_t moveStepper1;
 volatile uint8_t moveStepper2;
 volatile uint8_t moveStepper3;
 volatile uint8_t moveStepper4;
-
-uint8_t operating_mode = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -157,6 +156,7 @@ static void MX_TIM20_Init(void);
 static void MX_UART5_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -260,6 +260,7 @@ int main(void)
   MX_UART5_Init();
   MX_TIM16_Init();
   MX_USART2_UART_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
   PID_Create(&pid_b1, current_kp, current_ki, current_kd, CTRL_Loop_Period);
   PID_Create(&pid_b2, current_kp, current_ki, current_kd, CTRL_Loop_Period);
@@ -279,10 +280,10 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0);
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0);
-  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOC, GPIO_PIN_9, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0);
-  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0);
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
+  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOC, GPIO_PIN_9, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
+  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
 
   initTimer(&S1);
   initTimer(&S2);
@@ -345,22 +346,22 @@ int main(void)
 
 	  if(!S1.isMoving && !WisEmpty(&S1.q)){
 		  Wrapper temp = dequeueW(&S1.q);
-		  delay_us(900);
+		  delay_us(1000);
 		  moveAngleAbsolute(&S1, temp.degree, temp.rpm);
 	  }
 	  if(!S2.isMoving && !WisEmpty(&S2.q)){
 		  Wrapper temp = dequeueW(&S2.q);
-		  delay_us(900);
+		  delay_us(1000);
 		  moveAngleAbsolute(&S2, temp.degree, temp.rpm);
 	  }
 	  if(!S3.isMoving && !WisEmpty(&S3.q)){
 		  Wrapper temp = dequeueW(&S3.q);
-		  delay_us(900);
+		  delay_us(1000);
 		  moveAngleAbsolute(&S3, temp.degree, temp.rpm);
 	  }
 	  if(!S4.isMoving && !WisEmpty(&S4.q)){
 		  Wrapper temp = dequeueW(&S4.q);
-		  delay_us(900);
+		  delay_us(1000);
 		  moveAngleAbsolute(&S4, temp.degree, temp.rpm);
 	  }
     /* USER CODE END WHILE */
@@ -369,6 +370,19 @@ int main(void)
 	if (control_loop){
 		b1_current_rpm = Encoder_GetSpeedRPM(&E1);
 		b1_control_signal = PID_Compute(&pid_b1, (float)b1_target_rpm, b1_current_rpm);
+		// --- TELEMETRY TRANSMISSION START ---
+		// Format: "Target,Current"
+		//char telemetry_buf[64];
+
+		// Fixed: Only passing 2 arguments to match "T:%d C:%.2f"
+//		int len = snprintf(telemetry_buf, sizeof(telemetry_buf),
+//						   "%.2f,%d\r\n",
+//						   E2.speed_rpm, b2_target_rpm);
+
+		// Transmit via UART5
+		//HAL_UART_Transmit(&huart5, (uint8_t*)telemetry_buf, len, 10);
+		// --- TELEMETRY TRANSMISSION END -----
+		//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
 		Motor_SetOutput(&B1, b1_control_signal);
 		b2_current_rpm = Encoder_GetSpeedRPM(&E2);
 		b2_control_signal = PID_Compute(&pid_b2, (float)b2_target_rpm, b2_current_rpm);
@@ -382,36 +396,6 @@ int main(void)
 		Motor_SetOutput(&B4, b4_control_signal);
 		control_loop = 0;
 	}
-
-//	if (control_loop){
-//		b1_current_rpm = Encoder_GetSpeedRPM(&E1);
-//		b1_control_signal = PID_Compute(&pid_b1, (float)b1_target_rpm, b1_current_rpm);
-//		// --- TELEMETRY TRANSMISSION START ---
-//		// Format: "Target,Current"
-//		char telemetry_buf[64];
-//
-//		// Fixed: Only passing 2 arguments to match "T:%d C:%.2f"
-//		int len = snprintf(telemetry_buf, sizeof(telemetry_buf),
-//						   "%.2f,%d\r\n",
-//						   b2_current_rpm, b2_target_rpm);
-//
-//		// Transmit via UART5
-//		HAL_UART_Transmit(&huart5, (uint8_t*)telemetry_buf, len, 10);
-//		// --- TELEMETRY TRANSMISSION END -----
-//		//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
-//		Motor_SetOutput(&B1, b1_control_signal);
-//		b2_current_rpm = Encoder_GetSpeedRPM(&E2);
-//		b2_control_signal = PID_Compute(&pid_b2, (float)b2_target_rpm, b2_current_rpm);
-//		//b2_control_signal = map_rpm_to_signal((float)b2_target_rpm);
-//		Motor_SetOutput(&B2, b2_control_signal);
-//		b3_current_rpm = Encoder_GetSpeedRPM(&E3);
-//		b3_control_signal = PID_Compute(&pid_b3, (float)b3_target_rpm, b3_current_rpm);
-//		Motor_SetOutput(&B3, b3_control_signal);
-//		b4_current_rpm = Encoder_GetSpeedRPM(&E4);
-//		b4_control_signal = PID_Compute(&pid_b4, (float)b4_target_rpm, b4_current_rpm);
-//		Motor_SetOutput(&B4, b4_control_signal);
-//		control_loop = 0;
-//	}
 
   }
 
@@ -717,6 +701,44 @@ static void MX_TIM6_Init(void)
 }
 
 /**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 0;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 65535;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+
+}
+
+/**
   * @brief TIM8 Initialization Function
   * @param None
   * @retval None
@@ -792,7 +814,7 @@ static void MX_TIM15_Init(void)
   htim15.Init.Period = 3;
   htim15.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim15.Init.RepetitionCounter = 0;
-  htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim15) != HAL_OK)
   {
     Error_Handler();
@@ -857,7 +879,7 @@ static void MX_TIM16_Init(void)
   htim16.Init.Period = 3;
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
-  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
   {
     Error_Handler();
@@ -920,7 +942,7 @@ static void MX_TIM17_Init(void)
   htim17.Init.Period = 3;
   htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim17.Init.RepetitionCounter = 0;
-  htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim17) != HAL_OK)
   {
     Error_Handler();
@@ -984,7 +1006,7 @@ static void MX_TIM20_Init(void)
   htim20.Init.Period = 3;
   htim20.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim20.Init.RepetitionCounter = 0;
-  htim20.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim20.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim20) != HAL_OK)
   {
     Error_Handler();
@@ -1239,6 +1261,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		S1.totalPulses++;
         if (S1.step_counter >= S1.target_steps) {
         	Stepper_Stop(&S1);
+        	//__HAL_TIM_SET_COMPARE(S1.step_timer, S1.stepper->step_channel, 0);
             s1_acc_err_pulses += S1.target_steps - S1.step_counter;
             S1.step_counter = 0;
             S1.target_steps = 0;
@@ -1251,6 +1274,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		S2.step_counter++;
 		S2.abs_step_count  += S2.dir;
 		S2.totalPulses++;
+		if (S2.totalPulses % 13000 == 0){
+					S2.offset = 0*S2.dir;
+				}
         if (S2.step_counter >= S2.target_steps) {
         	Stepper_Stop(&S2);
             S2.step_counter = 0;
@@ -1262,6 +1288,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		if(!S3.isMoving) return;
 		S3.step_counter++;
 		S3.abs_step_count += S3.dir;
+		S3.totalPulses++;
+		if (S3.totalPulses % 13000 == 0){
+					S3.offset = 0*S3.dir;
+				}
         if (S3.step_counter >= S3.target_steps) {
         	Stepper_Stop(&S3);
             S3.step_counter = 0;
@@ -1273,6 +1303,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		if(!S4.isMoving) return;
 		S4.step_counter++;
 		S4.abs_step_count += S4.dir;
+		S4.totalPulses++;
+		if (S4.totalPulses % 13000 == 0){
+							S4.offset = 0*S4.dir;
+						}
         if (S4.step_counter >= S4.target_steps) {
         	Stepper_Stop(&S4);
             S4.step_counter = 0;

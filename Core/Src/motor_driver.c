@@ -71,7 +71,7 @@ void handle_command(char *cmd)
 
 					Wrapper temp;
 					temp.degree = angle;
-					temp.rpm = 20;
+					temp.rpm = 60;
 					S->lastInstruct.degree = angle;
 					S->lastInstruct.rpm = temp.rpm;
 					enqueueW(&S->q, temp);
