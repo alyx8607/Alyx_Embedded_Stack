@@ -152,7 +152,7 @@ float Encoder_GetSpeedRPM(Encoder_Handle_t* handle){
     // RPM = (Delta / CPR) * (60s / 0.01s)
     // RPM = (Delta / CPR) * 6000
 
-    float rpm_f = ((float)delta * 6000.0f) / handle->counts_per_rev;
+    float rpm_f = (((float)delta * 6000.0f) / handle->counts_per_rev)*3;
 
     handle->speed_rpm = calc_MA(&handle->calculator, rpm_f);
 

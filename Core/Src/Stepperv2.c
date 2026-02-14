@@ -173,6 +173,7 @@ void moveAngleAbsolute(Stepper_Handle_t* stepper, float absolute_angle, float rp
 
 	if (delta > 180.0f)  delta -= 360.0f;
 	if (delta < -180.0f) delta += 360.0f; //shortest path chosen
+
 	if (stepper->rpm_smoothening){
 		rpm = 100*tanhf(fabs(0.013f*delta));
 		if (rpm < 3) rpm = 3;

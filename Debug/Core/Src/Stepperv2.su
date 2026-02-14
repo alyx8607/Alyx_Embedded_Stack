@@ -8,9 +8,9 @@
 ../Core/Src/Stepperv2.c:123:6:sendPulses	24	static
 ../Core/Src/Stepperv2.c:142:6:moveAngle	32	static
 ../Core/Src/Stepperv2.c:166:6:moveAngleAbsolute	40	static
-../Core/Src/Stepperv2.c:184:6:Stepper_Enable	16	static
-../Core/Src/Stepperv2.c:190:6:Stepper_Disable	16	static
-../Core/Src/Stepperv2.c:194:6:initWQueue	24	static
-../Core/Src/Stepperv2.c:203:6:enqueueW	24	static
-../Core/Src/Stepperv2.c:216:9:dequeueW	56	static
-../Core/Src/Stepperv2.c:234:9:WisEmpty	16	static
+../Core/Src/Stepperv2.c:193:6:Stepper_Enable	16	static
+../Core/Src/Stepperv2.c:199:6:Stepper_Disable	16	static
+../Core/Src/Stepperv2.c:203:6:initWQueue	24	static
+../Core/Src/Stepperv2.c:212:6:enqueueW	24	static
+../Core/Src/Stepperv2.c:225:9:dequeueW	56	static
+../Core/Src/Stepperv2.c:243:9:WisEmpty	16	static

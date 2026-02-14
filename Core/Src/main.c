@@ -40,7 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define CTRL_Loop_Freq 10
+#define CTRL_Loop_Freq 100
 #define CTRL_Loop_Period (1.0f / CTRL_Loop_Freq)
 #define ENCODERS_CPR 1993	// in motor spec sheet
 //#define ENCODERS_CPR 92733
@@ -131,10 +131,10 @@ uint8_t rx_byte;
 volatile int rx_idx = 0;
 volatile uint8_t callback_flag = 0;
 
-static float current_kp = 0.0299f;		// par kp toh senior he lmaoooo
-static float current_ki = 0.456f;
-//static float current_kd = 0.003f;
-static float current_kd = 0.001f;
+static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
+static float current_ki = 0.02823752341330259f;
+static float current_kd = 0.00013409059780944936f;
+
 volatile uint8_t moveStepper1;
 volatile uint8_t moveStepper2;
 volatile uint8_t moveStepper3;
@@ -280,10 +280,10 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
-  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOC, GPIO_PIN_9, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
-  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1);
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
+  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOC, GPIO_PIN_9, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
+  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
 
   initTimer(&S1);
   initTimer(&S2);
