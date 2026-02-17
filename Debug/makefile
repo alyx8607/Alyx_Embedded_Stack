@@ -61,7 +61,7 @@ main-build: Alyx_Stack.elf secondary-outputs
 
 # Tool invocations
 Alyx_Stack.elf Alyx_Stack.map: $(OBJS) $(USER_OBJS) D:\MANAS\STM32\Workspaces\Alyx_Stack\STM32G491RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Alyx_Stack.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\MANAS\STM32\Workspaces\Alyx_Stack\STM32G491RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Alyx_Stack.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "Alyx_Stack.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\MANAS\STM32\Workspaces\Alyx_Stack\STM32G491RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Alyx_Stack.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

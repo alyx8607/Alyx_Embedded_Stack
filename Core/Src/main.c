@@ -50,6 +50,7 @@
 #define Stepper_Steps_Per_Rev (Stepper_Motor_Steps_Per_Rev * Stepper_Microsteps)
 
 #define rx_buf_size 64
+#define feedback_buf_size 64
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -130,6 +131,7 @@ uint8_t rx_byte;
 //uint8_t buffer[10];
 volatile int rx_idx = 0;
 volatile uint8_t callback_flag = 0;
+uint8_t feedback_buf[feedback_buf_size];
 
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
@@ -394,6 +396,13 @@ int main(void)
 		b4_current_rpm = Encoder_GetSpeedRPM(&E4);
 		b4_control_signal = PID_Compute(&pid_b4, (float)b4_target_rpm, b4_current_rpm);
 		Motor_SetOutput(&B4, b4_control_signal);
+//
+//		int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
+//		                           "@S%ld,%ld,%ld,%ld!\r\n",
+//		                           S1.abs_step_count, S2.abs_step_count,
+//		                           S3.abs_step_count, S4.abs_step_count);
+//		HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 5);
+
 		control_loop = 0;
 	}
 
