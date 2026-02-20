@@ -40,7 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define CTRL_Loop_Freq 100
+//#define CTRL_Loop_Freq 100
 #define CTRL_Loop_Period (1.0f / CTRL_Loop_Freq)
 #define ENCODERS_CPR 1993	// in motor spec sheet
 //#define ENCODERS_CPR 92733
@@ -48,7 +48,6 @@
 #define Stepper_Motor_Steps_Per_Rev 800
 //#define Stepper_Motor_Steps_Per_Rev 1600
 #define Stepper_Steps_Per_Rev (Stepper_Motor_Steps_Per_Rev * Stepper_Microsteps)
-
 #define rx_buf_size 64
 #define feedback_buf_size 64
 /* USER CODE END PD */
@@ -296,7 +295,7 @@ int main(void)
 
   //timer period callback
 
-  TIM6_SetPeriod_us(200000);
+  TIM6_SetPeriod_us(100000);
   DWT_Init();
 
   //Stepper_Create(&stepper_handle_BL, &htim17, TIM_CHANNEL_1, STEP_BL_DIR_GPIO_Port,  STEP_BL_DIR_Pin, STEP_BL_ENA_GPIO_Port, STEP_BL_ENA_Pin, Stepper_Steps_Per_Rev);
