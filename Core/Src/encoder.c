@@ -6,6 +6,7 @@
  */
 
 #include "encoder.h"
+#include "main.h"
 #include <stdlib.h>
 #include <stddef.h>
 #include <math.h>
@@ -128,34 +129,42 @@ void Encoder_Start(Encoder_Handle_t* handle){
 //	return handle->speed_rpm;
 //}
 
-//float  Encoder_GetSpeedRPM(Encoder_Handle_t* handle){
-//	uint32_t current = __HAL_TIM_GET_COUNTER(handle->timer);
-//	uint32_t now = HAL_GetTick();
-//	int32_t delta = current - handle->last_count;
-//	uint32_t dt_ms = now - handle->prev_time;
-//	float rpm_f = ((float)delta) * (60000.0f / (float)dt_ms) / (float)handle->counts_per_rev;
-//	handle->speed_rpm = calc_MA(&handle->calculator, rpm_f)*2;
-//	//if ((int) rpm_f == 0) motor->actualRpm = 0;
-//
-//	handle->last_count = current;
-//	handle->prev_time = now;
-//	return handle->speed_rpm;
-//}
-//
 float Encoder_GetSpeedRPM(Encoder_Handle_t* handle){
-
     uint32_t current = __HAL_TIM_GET_COUNTER(handle->timer);
+    uint32_t now = HAL_GetTick();
+
+    // handle 16-bit timer wrap-around
     int16_t delta_16 = (int16_t)(current - (uint32_t)handle->last_count);
     int32_t delta = (int32_t)delta_16;
 
-    // loop runs every 10ms (0.01s)
-    // RPM = (Delta / CPR) * (60s / 0.01s)
-    // RPM = (Delta / CPR) * 6000
+    uint32_t dt_ms = now - handle->prev_time;
+    if (dt_ms == 0) dt_ms = 1; // prevent divide by zero on the first loop
 
-    float rpm_f = (((float)delta * 6000.0f) / handle->counts_per_rev)*3;
+    // Dynamic RPM calculation: (Delta / CPR) * (60,000ms / dt_ms)
+    float rpm_f = (((float)delta * 60000.0f) / (float)dt_ms) / handle->counts_per_rev;
 
     handle->speed_rpm = calc_MA(&handle->calculator, rpm_f);
 
     handle->last_count = current;
+    handle->prev_time = now;
+
     return handle->speed_rpm;
 }
+
+//float Encoder_GetSpeedRPM(Encoder_Handle_t* handle){
+//
+//    uint32_t current = __HAL_TIM_GET_COUNTER(handle->timer);
+//    int16_t delta_16 = (int16_t)(current - (uint32_t)handle->last_count);
+//    int32_t delta = (int32_t)delta_16;
+//
+//    // loop runs every 10ms (0.01s)
+//    // RPM = (Delta / CPR) * (60s / 0.01s)
+//    // RPM = (Delta / CPR) * 6000
+//
+//    float rpm_f = (((float)delta * 60.0f * CTRL_Loop_Freq) / handle->counts_per_rev);
+//
+//    handle->speed_rpm = calc_MA(&handle->calculator, rpm_f);
+//
+//    handle->last_count = current;
+//    return handle->speed_rpm;
+//}
