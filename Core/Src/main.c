@@ -41,14 +41,13 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define CTRL_Loop_Period (1.0f / CTRL_Loop_Freq)
-#define ENCODERS_CPR 1993	// in motor spec sheet
-//#define ENCODERS_CPR 92733
-#define DEBOUNCE_TIME_PERIOD 50		// 200 ms debounce time for lim switches
+#define ENCODERS_CPR 1993			// bilda motors
+//#define ENCODERS_CPR 92733		// old rhino motors
+#define DEBOUNCE_TIME_PERIOD 50		// debounce time for lim switches
 #define Stepper_Microsteps 1
 #define Stepper_Motor_Steps_Per_Rev 800
 //#define Stepper_Motor_Steps_Per_Rev 1600
 #define Stepper_Steps_Per_Rev (Stepper_Motor_Steps_Per_Rev * Stepper_Microsteps)
-
 #define rx_buf_size 64
 #define feedback_buf_size 64
 /* USER CODE END PD */
@@ -63,15 +62,15 @@ PID_Handle_t pid_b4;
 // 1   2
 // 3   4
 // for back-left motors
-Motor_Handle_t B1; //B -> BDC
+Motor_Handle_t B1; 		// B -> BDC
 Motor_Handle_t B2;
 Motor_Handle_t B3;
 Motor_Handle_t B4;
-Encoder_Handle_t E1; //E -> Encoder
+Encoder_Handle_t E1; 	// E -> Encoder
 Encoder_Handle_t E2;
 Encoder_Handle_t E3;
 Encoder_Handle_t E4;
-Stepper_Handle_t S1;
+Stepper_Handle_t S1;	// S -> Stepper
 Stepper_Handle_t S2;
 Stepper_Handle_t S3;
 Stepper_Handle_t S4;
@@ -83,7 +82,6 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim6;
-TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim8;
 TIM_HandleTypeDef htim15;
 TIM_HandleTypeDef htim16;
@@ -92,6 +90,7 @@ TIM_HandleTypeDef htim20;
 
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_uart5_rx;
 
 /* USER CODE BEGIN PV */
 // Encoder + RPM vars
@@ -104,27 +103,22 @@ volatile float b1_current_rpm = 0.0f;
 volatile float b2_current_rpm = 0.0f;
 volatile float b3_current_rpm = 0.0f;
 volatile float b4_current_rpm = 0.0f;
-
 float b1_control_signal = 0.0f;		// PID output - more responsive than taman with headphones on
 float b2_control_signal = 0.0f;
 float b3_control_signal = 0.0f;
 float b4_control_signal = 0.0f;
 
 // stepper motor
-//volatile float stepper_target_angle = 0.0f;
-//volatile int new_stepper_command = 0;
-//volatile float angle_to_move = 0.0f;
-//volatile uint8_t step_dir = 0;
 volatile int s1_target_angle = 0;
 volatile int s2_target_angle = 0;
 volatile int s3_target_angle = 0;
 volatile int s4_target_angle = 0;
 
+// homing steppers
 volatile uint32_t last_debounce_time[4] = {0, 0, 0, 0};
 volatile uint32_t current_debounce_time = 0;
-//volatile int s1_acc_err_pulses = 0;
 
-volatile uint8_t control_loop = 0;
+volatile uint8_t control_loop = 0;		// control loop flag
 
 // USB - USki Baat sunle lolololololol
 //uint8_t instruct_buffer[64];
@@ -132,23 +126,22 @@ volatile uint8_t control_loop = 0;
 
 uint8_t rx_buf[rx_buf_size];
 uint8_t rx_byte;
-//uint8_t buffer[10];
 volatile int rx_idx = 0;
 volatile uint8_t callback_flag = 0;
 uint8_t feedback_buf[feedback_buf_size];
+volatile uint8_t uart_data_ready = 0;
+uint8_t shadow_rx_buf[rx_buf_size * 2]; // This is the CPU's private copy: large to hold accumulations
+char main_cmd_buf[128];                 // The CPU parses this in the while(1) loop
 
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
-//volatile uint8_t moveStepper1;
-//volatile uint8_t moveStepper2;
-//volatile uint8_t moveStepper3;
-//volatile uint8_t moveStepper4;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM4_Init(void);
@@ -161,7 +154,6 @@ static void MX_TIM20_Init(void);
 static void MX_UART5_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -265,6 +257,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
@@ -277,7 +270,6 @@ int main(void)
   MX_UART5_Init();
   MX_TIM16_Init();
   MX_USART2_UART_Init();
-  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
   PID_Create(&pid_b1, current_kp, current_ki, current_kd, CTRL_Loop_Period);
   PID_Create(&pid_b2, current_kp, current_ki, current_kd, CTRL_Loop_Period);
@@ -352,10 +344,8 @@ int main(void)
   //HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3); // B4
   HAL_TIM_Base_Start_IT(&htim6);	//scheduling interrupts
 
-  HAL_UART_Receive_IT(&huart5, &rx_byte, 1); // for incoming ros commands
-  //HAL_UART_Receive_IT(&huart5, buffer, 1);
-
-  //Stepper_Enable(&stepper_handle_BL);
+  //HAL_UART_Receive_IT(&huart5, &rx_byte, 1); // for incoming ros commands
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);	// for incoming ros commands
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -401,6 +391,12 @@ int main(void)
 		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = IDLE;
 		  break;
 	  case TELEOP:
+
+		  if (uart_data_ready) {
+			uart_data_ready = 0;
+			handle_command(main_cmd_buf);
+		  }
+
 		  if(!S1.isMoving && !WisEmpty(&S1.q) && !S1.pending_preemption){
 			  Wrapper temp = dequeueW(&S1.q);
 			  moveAngleAbsolute(&S1, temp.degree, temp.rpm, &B1);
@@ -417,6 +413,30 @@ int main(void)
 			  Wrapper temp = dequeueW(&S4.q);
 			  moveAngleAbsolute(&S4, temp.degree, temp.rpm, &B4);
 		  }
+
+			if (control_loop){
+				b1_current_rpm = Encoder_GetSpeedRPM(&E1);
+				b1_control_signal = PID_Compute(&pid_b1, (float)B1.mode ? b1_target_rpm : -b1_target_rpm, b1_current_rpm);
+				//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
+				Motor_SetOutput(&B1, b1_control_signal);
+				b2_current_rpm = Encoder_GetSpeedRPM(&E2);
+				b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);
+				Motor_SetOutput(&B2, b2_control_signal);
+				b3_current_rpm = Encoder_GetSpeedRPM(&E3);
+				b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? b3_target_rpm : -b3_target_rpm, b3_current_rpm);
+				Motor_SetOutput(&B3, b3_control_signal);
+				b4_current_rpm = Encoder_GetSpeedRPM(&E4);
+				b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? b4_target_rpm : -b4_target_rpm, b4_current_rpm);
+				Motor_SetOutput(&B4, b4_control_signal);
+
+		//		int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
+		//								   "@S%ld,%ld,%ld,%ld!\r\n",
+		//								   S1.abs_step_count, S2.abs_step_count,
+		//								   S3.abs_step_count, S4.abs_step_count);
+		//		HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 5);
+				control_loop = 0;
+			}
+
 		  break;
 	  default:
 		  break;
@@ -425,41 +445,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	if (control_loop){
-		b1_current_rpm = Encoder_GetSpeedRPM(&E1);
-		b1_control_signal = PID_Compute(&pid_b1, (float)B1.mode ? b1_target_rpm : -b1_target_rpm, b1_current_rpm);
-		// --- TELEMETRY TRANSMISSION START ---
-		// Format: "Target,Current"
-		//char telemetry_buf[64];
-
-		// Fixed: Only passing 2 arguments to match "T:%d C:%.2f"
-//		int len = snprintf(telemetry_buf, sizeof(telemetry_buf),
-//						   "%.2f,%d\r\n",
-//						   E2.speed_rpm, b2_target_rpm);
-
-		// Transmit via UART5
-		//HAL_UART_Transmit(&huart5, (uint8_t*)telemetry_buf, len, 10);
-		// --- TELEMETRY TRANSMISSION END -----
-		//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
-		Motor_SetOutput(&B1, b1_control_signal);
-		b2_current_rpm = Encoder_GetSpeedRPM(&E2);
-		b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);
-		//b2_control_signal = map_rpm_to_signal((float)b2_target_rpm);
-		Motor_SetOutput(&B2, b2_control_signal);
-		b3_current_rpm = Encoder_GetSpeedRPM(&E3);
-		b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? b3_target_rpm : -b3_target_rpm, b3_current_rpm);
-		Motor_SetOutput(&B3, b3_control_signal);
-		b4_current_rpm = Encoder_GetSpeedRPM(&E4);
-		b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? b4_target_rpm : -b4_target_rpm, b4_current_rpm);
-		Motor_SetOutput(&B4, b4_control_signal);
-
-		int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
-								   "@S%ld,%ld,%ld,%ld!\r\n",
-								   S1.abs_step_count, S2.abs_step_count,
-								   S3.abs_step_count, S4.abs_step_count);
-		//HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 5);
-		control_loop = 0;
-	}
 
   }
 
@@ -761,44 +746,6 @@ static void MX_TIM6_Init(void)
   /* USER CODE BEGIN TIM6_Init 2 */
 
   /* USER CODE END TIM6_Init 2 */
-
-}
-
-/**
-  * @brief TIM7 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM7_Init(void)
-{
-
-  /* USER CODE BEGIN TIM7_Init 0 */
-
-  /* USER CODE END TIM7_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  /* USER CODE BEGIN TIM7_Init 1 */
-
-  /* USER CODE END TIM7_Init 1 */
-  htim7.Instance = TIM7;
-  htim7.Init.Prescaler = 0;
-  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim7.Init.Period = 65535;
-  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM7_Init 2 */
-
-  /* USER CODE END TIM7_Init 2 */
 
 }
 
@@ -1230,6 +1177,23 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -1422,22 +1386,51 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 //	}
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == UART5)
     {
-    	callback_flag++;
-        if (rx_byte == '\n' || rx_byte == '\r' || rx_byte == ';'){
-       	rx_buf[rx_idx] = '\0';
-       	handle_command(rx_buf);
-        rx_idx = 0;
-        }
-        else{
-        	if (rx_idx < rx_buf_size - 1)	rx_buf[rx_idx++] = rx_byte;
-        	if (rx_idx >= rx_buf_size - 1)	rx_idx = 0;
-        }
+    	static uint16_t old_pos = 0;
+		static uint16_t shadow_idx = 0;
+		uint16_t len = 0;
+
+		// copy chunk from DMA buffer into accumulator
+		if (Size > old_pos) {			// linear buffer
+			len = Size - old_pos;
+			memcpy(&shadow_rx_buf[shadow_idx], &rx_buf[old_pos], len);
+		}
+		else if (Size < old_pos) {		// wrap-around in buffer
+			len = rx_buf_size - old_pos;
+			memcpy(&shadow_rx_buf[shadow_idx], &rx_buf[old_pos], len);
+			memcpy(&shadow_rx_buf[shadow_idx + len], rx_buf, Size);
+			len += Size;
+		}
+
+		shadow_idx += len;
+		shadow_rx_buf[shadow_idx] = '\0'; // seal string
+		old_pos = Size;
+
+		// last semi-colon in string
+		char *last_semi = strrchr((char*)shadow_rx_buf, ';');
+		if (last_semi != NULL) {
+			uint16_t split_index = (last_semi - (char*)shadow_rx_buf) + 1;
+			uint16_t leftover_len = shadow_idx - split_index;
+			memcpy(main_cmd_buf, shadow_rx_buf, split_index);			// copy complete command into main loop's buffer
+			main_cmd_buf[split_index] = '\0';
+			uart_data_ready = 1; // flag main loop
+
+			// save the incomplete fragment ("B3 5" instead of "B3 50") for the next interrupt
+			char temp_leftover[64];
+			if (leftover_len > 0) {
+				memcpy(temp_leftover, &shadow_rx_buf[split_index], leftover_len);
+				memcpy(shadow_rx_buf, temp_leftover, leftover_len);
+			}
+			shadow_idx = leftover_len;
+			shadow_rx_buf[shadow_idx] = '\0';
+		}
+		else if (shadow_idx >= sizeof(shadow_rx_buf) - 10)
+			shadow_idx = 0;										// full buffer but no semicolons
     }
-    HAL_UART_Receive_IT(&huart5, &rx_byte, 1);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){

@@ -30,14 +30,16 @@ void Motor_Create(Motor_Handle_t* handle, TIM_HandleTypeDef* pwm_timer, uint32_t
 	handle->mode = 1;
 }
 
-//// Akshat parse for scaling:
+// Akshat parse for scaling to 8 motors:
 void handle_command(char *cmd)
 {
 	const char *p = cmd;
 
 	while (*p){
 
-		while (isspace((unsigned char)*p)) p++;
+    	while (*p && !(*p == 'b' || *p == 'B' || *p == 's' || *p == 'S')) p++;
+
+        if (*p == '\0') break;
 
 		if (*p == 'b' || *p == 'B'){
 
@@ -45,10 +47,13 @@ void handle_command(char *cmd)
 			int id = parse_cmd(&p);
 			int rpm = parse_cmd(&p);
 
-			if      (id == 1) b1_target_rpm = rpm;
-			else if (id == 2) b2_target_rpm = rpm;
-			else if (id == 3) b3_target_rpm = rpm;
-			else if (id == 4) b4_target_rpm = rpm;
+			switch (id) {
+				case 1: b1_target_rpm = rpm; break;
+				case 2: b2_target_rpm = rpm; break;
+				case 3: b3_target_rpm = rpm; break;
+				case 4: b4_target_rpm = rpm; break;
+				default: break;
+			}
 		}
 
 		else if (*p == 's' || *p == 'S')
@@ -56,13 +61,15 @@ void handle_command(char *cmd)
 			p++;
 			int id = parse_cmd(&p);
 			int angle = parse_cmd(&p);
-			//s1_target_angle = angle;
 			Stepper_Handle_t *S = NULL;
 
-			if (id == 1) S = &S1;
-			else if (id == 2) S = &S2;
-			else if (id == 3) S = &S3;
-			else if (id == 4) S = &S4;
+			switch (id) {
+				case 1: S = &S1; break;
+				case 2: S = &S2; break;
+				case 3: S = &S3; break;
+				case 4: S = &S4; break;
+				default: break;
+			}
 
 			if (S)
 			{
@@ -83,15 +90,10 @@ void handle_command(char *cmd)
 					if (!S->queueMode){
 						if (!S->pending_preemption && S->isMoving) S->pending_preemption = 1;
 					}
-			  }		// 5 kiya coz gearbox 5:! he behenchod mujhe nahi khelna
-//                S->target_steps = (uint32_t)(fabsf(angle) * S->steps_per_rev / 360.0f);
-//                S->step_counter = 0;
-//                S->dir = (angle >= 0) ? 0 : 1;
-//                S->recievedStepper = 1;
+			  }
+
 			}
-		else {
-			while (*p && !isspace((unsigned char)*p)) p++;
-		}
+		else p++;		// if we land on weird character
 	}
 }
 
