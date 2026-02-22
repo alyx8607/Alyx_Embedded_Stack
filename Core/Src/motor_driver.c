@@ -30,67 +30,121 @@ void Motor_Create(Motor_Handle_t* handle, TIM_HandleTypeDef* pwm_timer, uint32_t
 }
 
 //// Akshat parse for scaling:
+//void handle_command(char *cmd)
+//{
+//	const char *p = cmd;
+//
+//	while (*p){
+//
+//		while (*p && (isspace((unsigned char)*p) || *p == ';')) p++;
+//
+//		if (*p == 'b' || *p == 'B'){
+//
+//			p++;
+//			int id = parse_cmd(&p);
+//			int rpm = parse_cmd(&p);
+//
+//			if      (id == 1) b1_target_rpm = rpm;
+//			else if (id == 2) b2_target_rpm = rpm;
+//			else if (id == 3) b3_target_rpm = rpm;
+//			else if (id == 4) b4_target_rpm = rpm;
+//		}
+//
+//		else if (*p == 's' || *p == 'S')
+//		{
+//			p++;
+//			int id = parse_cmd(&p);
+//			int angle = parse_cmd(&p);
+//			//s1_target_angle = angle;
+//			Stepper_Handle_t *S = NULL;
+//
+//			if (id == 1) S = &S1;
+//			else if (id == 2) S = &S2;
+//			else if (id == 3) S = &S3;
+//			else if (id == 4) S = &S4;
+//
+//			if (S)
+//			{
+//				if (angle == (int) S->lastInstruct.degree){
+//					continue;
+//				}
+//
+//					Wrapper temp;
+//					temp.degree = angle;
+//					temp.rpm = 30;
+//					S->lastInstruct.degree = angle;
+//					S->lastInstruct.rpm = temp.rpm;
+//					enqueueW(&S->q, temp);
+//					if (!S->queueMode){
+//						Stepper_Stop(S);
+//						S->step_counter = 0;
+//						S->target_steps = 0;
+//					}
+//			  }		// 5 kiya coz gearbox 5:! he behenchod mujhe nahi khelna
+////                S->target_steps = (uint32_t)(fabsf(angle) * S->steps_per_rev / 360.0f);
+////                S->step_counter = 0;
+////                S->dir = (angle >= 0) ? 0 : 1;
+////                S->recievedStepper = 1;
+//			}
+//		else {
+//			while (*p && !isspace((unsigned char)*p)) p++;
+//		}
+//	}
+//}
+
+// New parser for DMA:
 void handle_command(char *cmd)
 {
-	const char *p = cmd;
+    const char *p = cmd;
 
-	while (*p){
+    while (*p) {
+        // Skip ALL delimiters (spaces, tabs, newlines, and semicolons)
+        // This ensures 'p' always lands on 'B', 'S', or the end of the string.
+    	while (*p && !(*p == 'b' || *p == 'B' || *p == 's' || *p == 'S')) p++;
 
-		while (isspace((unsigned char)*p)) p++;
+        if (*p == '\0') break;
 
-		if (*p == 'b' || *p == 'B'){
+        if (*p == 'b' || *p == 'B') {
+            p++;
+            int id = parse_cmd(&p);
+            int rpm = parse_cmd(&p);
 
-			p++;
-			int id = parse_cmd(&p);
-			int rpm = parse_cmd(&p);
+            if      (id == 1) b1_target_rpm = rpm;
+            else if (id == 2) b2_target_rpm = rpm;
+            else if (id == 3) b3_target_rpm = rpm;
+            else if (id == 4) b4_target_rpm = rpm;
+        }
+        else if (*p == 's' || *p == 'S') {
+            p++;
+            int id = parse_cmd(&p);
+            int angle = parse_cmd(&p);
 
-			if      (id == 1) b1_target_rpm = rpm;
-			else if (id == 2) b2_target_rpm = rpm;
-			else if (id == 3) b3_target_rpm = rpm;
-			else if (id == 4) b4_target_rpm = rpm;
-		}
+            Stepper_Handle_t *S = NULL;
+            if      (id == 1) S = &S1;
+            else if (id == 2) S = &S2;
+            else if (id == 3) S = &S3;
+            else if (id == 4) S = &S4;
 
-		else if (*p == 's' || *p == 'S')
-		{
-			p++;
-			int id = parse_cmd(&p);
-			int angle = parse_cmd(&p);
-			//s1_target_angle = angle;
-			Stepper_Handle_t *S = NULL;
+            if (S && (angle != (int)S->lastInstruct.degree)) {
+                Wrapper temp = {.degree = angle, .rpm = 30};
+                S->lastInstruct.degree = angle;
+                S->lastInstruct.rpm = temp.rpm;
+                enqueueW(&S->q, temp);
 
-			if (id == 1) S = &S1;
-			else if (id == 2) S = &S2;
-			else if (id == 3) S = &S3;
-			else if (id == 4) S = &S4;
-
-			if (S)
-			{
-				if (angle == (int) S->lastInstruct.degree){
-					continue;
-				}
-
-					Wrapper temp;
-					temp.degree = angle;
-					temp.rpm = 30;
-					S->lastInstruct.degree = angle;
-					S->lastInstruct.rpm = temp.rpm;
-					enqueueW(&S->q, temp);
-					if (!S->queueMode){
-						Stepper_Stop(S);
-						S->step_counter = 0;
-						S->target_steps = 0;
-					}
-			  }		// 5 kiya coz gearbox 5:! he behenchod mujhe nahi khelna
-//                S->target_steps = (uint32_t)(fabsf(angle) * S->steps_per_rev / 360.0f);
-//                S->step_counter = 0;
-//                S->dir = (angle >= 0) ? 0 : 1;
-//                S->recievedStepper = 1;
-			}
-		else {
-			while (*p && !isspace((unsigned char)*p)) p++;
-		}
-	}
+                if (!S->queueMode) {
+                    Stepper_Stop(S);
+                    S->step_counter = 0;
+                    S->target_steps = 0;
+                }
+            }
+        }
+        else {
+            // Safety: If we land on a weird character, move forward by ONE
+            p++;
+        }
+    }
 }
+
 
 // pid tuner requirements:
 
