@@ -29,8 +29,8 @@ Core/Src/motor_driver.o: ../Core/Src/motor_driver.c \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h \
- ../Core/Inc/Stepperv2.h ../Core/Inc/globals.h \
- ../Core/Inc/pid_controller.h
+ ../Core/Inc/Stepperv2.h ../Core/Inc/main.h ../Core/Inc/motor_driver.h \
+ ../Core/Inc/globals.h ../Core/Inc/pid_controller.h
 ../Core/Inc/motor_driver.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
 ../Core/Inc/stm32g4xx_hal_conf.h:
@@ -62,5 +62,7 @@ Core/Src/motor_driver.o: ../Core/Src/motor_driver.c \
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h:
 ../Core/Inc/Stepperv2.h:
+../Core/Inc/main.h:
+../Core/Inc/motor_driver.h:
 ../Core/Inc/globals.h:
 ../Core/Inc/pid_controller.h:

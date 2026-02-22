@@ -27,6 +27,7 @@ void Motor_Create(Motor_Handle_t* handle, TIM_HandleTypeDef* pwm_timer, uint32_t
 	handle->pwm_channel = pwm_channel;
 	handle->dir_port = dir_port;
 	handle->dir_pin = dir_pin;
+	handle->mode = 1;
 }
 
 //// Akshat parse for scaling:
@@ -66,19 +67,21 @@ void handle_command(char *cmd)
 			if (S)
 			{
 				if (angle == (int) S->lastInstruct.degree){
+					while (*p && !isspace((unsigned char)*p)) p++;
 					continue;
 				}
 
 					Wrapper temp;
 					temp.degree = angle;
-					temp.rpm = 60;
+					temp.rpm = 30;
 					S->lastInstruct.degree = angle;
 					S->lastInstruct.rpm = temp.rpm;
+					if (!S->queueMode){
+						initWQueue(&S->q);
+					}
 					enqueueW(&S->q, temp);
 					if (!S->queueMode){
-						Stepper_Stop(S);
-						S->step_counter = 0;
-						S->target_steps = 0;
+						if (!S->pending_preemption && S->isMoving) S->pending_preemption = 1;
 					}
 			  }		// 5 kiya coz gearbox 5:! he behenchod mujhe nahi khelna
 //                S->target_steps = (uint32_t)(fabsf(angle) * S->steps_per_rev / 360.0f);
@@ -191,9 +194,9 @@ void Motor_SetOutput(Motor_Handle_t* handle, float output) {
 
 	// set direction
 	if (output >= 0.0f) {
-		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_SET); // Forward
+		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_SET); // Forward (defined by the current operating mode)
 	} else {
-		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_RESET); // Reverse
+		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_RESET); // Reverse (defined by the current operating mode)
 	}
 
 	// calculate and set PWM

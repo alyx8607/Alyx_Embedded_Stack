@@ -6,8 +6,6 @@
  */
 
 #include "Stepperv2.h"
-#include <math.h>
-#include <main.h>
 static inline float clamp_deg_180_pos(float a)
 {
     a = fmodf(a, 360.0f);
@@ -17,25 +15,78 @@ static inline float clamp_deg_180_pos(float a)
 
     return a;   // (-180, 180]
 }
-
-static void enableCCRPreload(TIM_HandleTypeDef *htim, uint32_t channel)
+static inline float wrap360(float a)
 {
-    if (channel == TIM_CHANNEL_1) {
-        htim->Instance->CCMR1 |= TIM_CCMR1_OC1PE;
-    }
-    else if (channel == TIM_CHANNEL_2) {
-        htim->Instance->CCMR1 |= TIM_CCMR1_OC2PE;
-    }
-    else if (channel == TIM_CHANNEL_3) {
-        htim->Instance->CCMR2 |= TIM_CCMR2_OC3PE;
-    }
-    else if (channel == TIM_CHANNEL_4) {
-        htim->Instance->CCMR2 |= TIM_CCMR2_OC4PE;
+    a = fmodf(a, 360.0f);
+    if (a < 0) a += 360.0f;
+    return a;
+}
+
+//static void enableCCRPreload(TIM_HandleTypeDef *htim, uint32_t channel)
+//{
+//    if (channel == TIM_CHANNEL_1) {
+//        htim->Instance->CCMR1 |= TIM_CCMR1_OC1PE;
+//    }
+//    else if (channel == TIM_CHANNEL_2) {
+//        htim->Instance->CCMR1 |= TIM_CCMR1_OC2PE;
+//    }
+//    else if (channel == TIM_CHANNEL_3) {
+//        htim->Instance->CCMR2 |= TIM_CCMR2_OC3PE;
+//    }
+//    else if (channel == TIM_CHANNEL_4) {
+//        htim->Instance->CCMR2 |= TIM_CCMR2_OC4PE;
+//    }
+//}
+
+float calcAngularDiff(float a, float b){
+	float result = a - b;
+	if (result < -180) result += 360;
+	else if (result > 180) result -= 360;
+
+	return result;
+}
+
+uint8_t arcContains(float start, float end, uint8_t dir, float angle){
+    start = wrap360(start);
+    end   = wrap360(end);
+    angle = wrap360(angle);
+
+    if(dir == 1){  // CCW (increasing angle)
+        if(start <= end)
+            return angle >= start && angle <= end;
+        else  // wraps past 0
+            return angle >= start || angle <= end;
+    } else {        // CW
+        if(start >= end)
+            return angle <= start && angle >= end;
+        else
+            return angle <= start || angle >= end;
     }
 }
 
+static uint8_t angleInDeadband(float angle, float center, float halfWidth)
+{
+    float diff = clamp_deg_180_pos(angle - center);
+    return fabsf(diff) <= halfWidth;
+}
 
-void Stepper_Create(Stepper_Handle_t* handle, TIM_HandleTypeDef* step_timer ,uint32_t step_channel, GPIO_TypeDef* step_dir_port, uint16_t step_dir_pin,  GPIO_TypeDef* ena_port, uint16_t ena_pin, uint16_t steps_per_rev, uint8_t queueMode, uint8_t rpm_smoothening){
+uint8_t checkDeadband(float startAngle, float endAngle, uint8_t dir, float avoid, int deadbandSize)
+{
+    float half = deadbandSize / 2.0f;
+
+    float lDB = wrap360(avoid - half);
+    float uDB = wrap360(avoid + half);
+
+    uint8_t l_hit = arcContains(startAngle, endAngle, dir, lDB);
+    uint8_t u_hit = arcContains(startAngle, endAngle, dir, uDB);
+
+    uint8_t start_inside = angleInDeadband(startAngle, avoid, half);
+    uint8_t end_inside   = angleInDeadband(endAngle, avoid, half);
+
+    return l_hit || u_hit || (start_inside && end_inside);
+}
+
+void Stepper_Create(Stepper_Handle_t* handle, TIM_HandleTypeDef* step_timer ,uint32_t step_channel, GPIO_TypeDef* step_dir_port, uint16_t step_dir_pin,  GPIO_TypeDef* ena_port, uint16_t ena_pin, uint16_t steps_per_rev, uint8_t queueMode, uint8_t rpm_smoothening, uint8_t constraintMode, float limSwitchOffset){
 
 	if (handle == NULL) return;
 
@@ -60,36 +111,57 @@ void Stepper_Create(Stepper_Handle_t* handle, TIM_HandleTypeDef* step_timer ,uin
 	handle->step_accum = 0.0f;
 	handle->totalPulses = 0;
 	handle->abs_step_count = 0;
-	handle->absolute_angle = 0.0f;
+	handle->absolute_angle_f = 0.0f;
+	handle->absolute_angle_b = 180.0f;
 	handle->rpm_smoothening = rpm_smoothening;
-	handle->offset = 0;
+	handle->pending_preemption = 0;
+	handle->last_burst_size = 0;
+	handle->homing_status = 0;
+	handle->correctOffset = 0;
+	handle->constraintMode = constraintMode;
+	handle->limSwitchOffset = limSwitchOffset;
 }
 
 void initTimer(Stepper_Handle_t* handle){
-    HAL_TIM_Base_Start(handle->step_timer);
-    //__HAL_TIM_URS_ENABLE(handle->step_timer);
-    //handle->step_timer->Instance->CR1 |= TIM_CR1_ARPE; //enable ARR preload
+	__HAL_TIM_DISABLE(handle->step_timer);
+	__HAL_TIM_URS_ENABLE(handle->step_timer);
 
-    //enableCCRPreload(handle->step_timer, handle->step_channel); //enable CCR preload
+	    // Enable CC channel and MOE once, never touch again
+	TIM_CCxChannelCmd(handle->step_timer->Instance, handle->step_channel, TIM_CCx_ENABLE);
+	__HAL_TIM_MOE_ENABLE(handle->step_timer);
 
-    HAL_TIM_PWM_Start(handle->step_timer, handle->step_channel);
+	    // Enforce OPM once here while timer is stopped
+	handle->step_timer->Instance->CR1 |= TIM_CR1_OPM;
 }
 
 void Stepper_Stop(Stepper_Handle_t* stepper)
 {
-    if (!stepper || !stepper->isMoving) return;
+    if (!stepper)
+        return;
 
+    TIM_TypeDef *tim = stepper->step_timer->Instance;
 
-    //__HAL_TIM_DISABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
-    //HAL_TIM_PWM_Stop(stepper->step_timer, stepper->step_channel);
-    __HAL_TIM_SET_COMPARE(stepper->step_timer, stepper->step_channel, 0);
-    //__HAL_TIM_CLEAR_IT(stepper->step_timer, TIM_IT_UPDATE);
+    // If timer is running, stop immediately
+    if (tim->CR1 & TIM_CR1_CEN)
+    {
+        __HAL_TIM_DISABLE(stepper->step_timer);   // Clear CEN
+    }
 
+    // Disable update interrupt
+    __HAL_TIM_DISABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
 
-    //stepper->totalPulses++;
+    // Clear pending update flag (important)
+    __HAL_TIM_CLEAR_FLAG(stepper->step_timer, TIM_FLAG_UPDATE);
+
     stepper->isMoving = 0;
-    stepper->absolute_angle = clamp_deg_180_pos(stepper->abs_step_count * 360 / stepper->steps_per_rev);
+    stepper->step_timer->Instance->RCR = 0;
+    stepper->absolute_angle_f =
+        clamp_deg_180_pos(
+            stepper->abs_step_count * 360.0f / stepper->steps_per_rev
+        );
+    stepper->absolute_angle_b = clamp_deg_180_pos(stepper->absolute_angle_f + 180);
 }
+
 
 
 void toggleQueue(Stepper_Handle_t* stepper){
@@ -98,7 +170,7 @@ void toggleQueue(Stepper_Handle_t* stepper){
 }
 
 void setRPM(Stepper_Handle_t* stepper, float rpm){
-    __HAL_TIM_SET_COMPARE(stepper->step_timer, stepper->step_channel, 0);
+    //__HAL_TIM_SET_COMPARE(stepper->step_timer, stepper->step_channel, 0);
 	//Stepper_Stop(stepper);
 	if (rpm > stepper->maxRPM) rpm = stepper->maxRPM;
     float pulseFreq = (rpm * stepper->steps_per_rev) / 60.0f;
@@ -106,7 +178,9 @@ void setRPM(Stepper_Handle_t* stepper, float rpm){
     uint32_t timer_clk = HAL_RCC_GetPCLK1Freq();
     if ((RCC->CFGR & RCC_CFGR_PPRE1) != RCC_CFGR_PPRE1_DIV1)
         timer_clk *= 2;
-    float arr_f = (timer_clk / ( (125 + 1) * pulseFreq )) - 1.0f;
+    uint32_t psc = stepper->step_timer->Instance->PSC;
+    float arr_f = (timer_clk / ((psc + 1) * pulseFreq)) - 1.0f;
+
     uint32_t ARR = (uint32_t)(arr_f + 0.5f);
 
     if (ARR < 2) ARR = 2; //sanity check to ensure ARR isnt too small
@@ -120,24 +194,46 @@ void setRPM(Stepper_Handle_t* stepper, float rpm){
     //stepper->step_timer->Instance->EGR = TIM_EGR_UG;
 }
 
-void sendPulses(Stepper_Handle_t* stepper, uint32_t pulses, float rpm){
-	if (pulses == 0) {
-	        stepper->isMoving = 0;
-	        return;
-	    }
-	pulses += stepper->offset;
-	stepper->offset = 0;
-	setRPM(stepper, rpm);
-	//__HAL_TIM_DISABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
-	//__HAL_TIM_CLEAR_IT(stepper->step_timer, TIM_IT_UPDATE);
-	__HAL_TIM_SET_COUNTER(stepper->step_timer, 0);
-	//delay_us(100);
-	stepper->step_counter = 0;
-	stepper->target_steps = pulses;
-    __HAL_TIM_ENABLE_IT(stepper->step_timer, TIM_IT_UPDATE); // enable UPDATE IRQ
-	//HAL_TIM_PWM_Start(stepper->step_timer, stepper->step_channel);     // start PWM (no need _IT here)
-	stepper->isMoving = 1;
+void sendPulses(Stepper_Handle_t* stepper, uint32_t pulses, float rpm)
+{
+    if (!stepper || pulses == 0) {
+        if (stepper) Stepper_Stop(stepper);
+        return;
+    }
+
+    TIM_TypeDef *tim = stepper->step_timer->Instance;
+
+    // 1. Hard stop - timer must be off before touching RCR/ARR
+    __HAL_TIM_DISABLE(stepper->step_timer);
+    __HAL_TIM_DISABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
+    __HAL_TIM_CLEAR_FLAG(stepper->step_timer, TIM_FLAG_UPDATE);
+
+    // 2. Set RPM (writes ARR/CCR preloads while timer is stopped - safe)
+    if (rpm > 0.0f) setRPM(stepper, rpm);
+
+    // 3. Set up burst
+    stepper->target_steps   = pulses;
+    stepper->isMoving       = 1;
+
+    uint32_t chunk = (pulses < BURST_SIZE) ? pulses : BURST_SIZE;
+    stepper->last_burst_size = chunk;
+
+    tim->RCR = chunk - 1;
+    tim->CNT = 0;
+
+    // 4. Generate update event to push preloads (ARR, CCR, RCR) into shadows
+    tim->EGR = TIM_EGR_UG;
+
+    // 5. MUST clear UIF immediately - EGR_UG sets it even with URS=1
+    //    on advanced timers when the timer is stopped
+    __HAL_TIM_CLEAR_FLAG(stepper->step_timer, TIM_FLAG_UPDATE);
+
+    // 6. Now safe to enable IT and start
+    __HAL_TIM_ENABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
+    __HAL_TIM_ENABLE(stepper->step_timer);
 }
+
+
 
 void moveAngle(Stepper_Handle_t* stepper, float degree, float rpm){
 	if (degree >=0) {
@@ -152,32 +248,73 @@ void moveAngle(Stepper_Handle_t* stepper, float degree, float rpm){
 	float signed_fpulses = (degree / 360.0f) * stepper->steps_per_rev;
 	stepper->step_accum += signed_fpulses;
 
-	int32_t pulses = (int32_t) stepper->step_accum;
+	int32_t pulses = (int32_t)(stepper->step_accum +
+	                 (stepper->step_accum >= 0 ? 0.5f : -0.5f)); // round, don't truncate
 	stepper->step_accum -= pulses;
 
 	if (pulses < 0) {
 	    pulses = -pulses;
 	}
-	//if (pulses < 1) return;
+
+	if (pulses < 1) return;
 
 	sendPulses(stepper, pulses, rpm);
 }
 
-void moveAngleAbsolute(Stepper_Handle_t* stepper, float absolute_angle, float rpm){
+void moveAngleAbsolute(Stepper_Handle_t* stepper, float absolute_angle, float rpm, Motor_Handle_t* bdc){
+	uint8_t mode = bdc->mode;
 	float targetAngle_360 = fmodf(absolute_angle + 360.0f, 360.0f);
-	float currAngle_360   = fmodf(stepper->absolute_angle + 360.0f, 360.0f); //conversion to 360
+	float currAngle_360   = fmodf(mode ? stepper->absolute_angle_f + 360.0f : stepper->absolute_angle_b + 360.0f, 360.0f); //conversion to 360
 
-
-	float delta = targetAngle_360 - currAngle_360;
+	float delta = calcAngularDiff(targetAngle_360, currAngle_360);
 	if (fabs(delta) < (float) 360.0f/stepper->steps_per_rev) return; //if movement is lesser than motor resolution can handle, just skip
 
-	if (delta > 180.0f)  delta -= 360.0f;
-	if (delta < -180.0f) delta += 360.0f; //shortest path chosen
+
+
+	if (stepper->constraintMode){
+		uint8_t modeA = bdc->mode;
+		uint8_t modeB = !modeA;
+		float startAngleA = currAngle_360;
+		float startAngleB = fmodf(currAngle_360 + 180.0f, 360.0f);
+		float deltaA = calcAngularDiff(targetAngle_360, startAngleA);
+		float deltaB = calcAngularDiff(targetAngle_360, startAngleB);
+		uint8_t deadA = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaA, deltaA > 0, stepper->limSwitchOffset, 10);
+		uint8_t deadB = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaB, deltaB > 0, stepper->limSwitchOffset, 10);
+		if(deadA){
+			if(deadB) return; //hope it never hits this
+			delta = deltaB;
+			mode = modeB;
+			currAngle_360 = startAngleB;
+		}
+		else if (deadB){
+			delta = deltaA;
+			mode = modeA;
+			currAngle_360 = startAngleA;
+		}
+		else{
+			uint8_t selectionCond = (fabs(deltaA) < fabs(deltaB));
+			delta = selectionCond ? deltaA : deltaB;
+			mode = selectionCond ? modeA : modeB;
+			currAngle_360 = selectionCond ? startAngleA : startAngleB;
+		}
+
+	}
+
 	if (stepper->rpm_smoothening){
-		rpm = 100*tanhf(fabs(0.013f*delta));
+		rpm = 100*tanhf(fabs(0.008f*delta));
 		if (rpm < 3) rpm = 3;
 	}
 
+//	float future_steps = stepper->abs_step_count + (delta / 360.0f) * stepper->steps_per_rev;
+//
+//	if (future_steps > stepper->steps_per_rev ||
+//	    future_steps < -stepper->steps_per_rev)
+//	{
+//	    // reject move
+//	    return;
+//	}
+
+	bdc->mode = mode;
 	moveAngle(stepper, delta, rpm);
 }
 
