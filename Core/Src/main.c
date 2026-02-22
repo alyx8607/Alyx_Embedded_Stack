@@ -91,6 +91,7 @@ TIM_HandleTypeDef htim20;
 
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_uart5_rx;
 
 /* USER CODE BEGIN PV */
 // Encoder + RPM vars
@@ -132,6 +133,10 @@ volatile int rx_idx = 0;
 volatile uint8_t callback_flag = 0;
 uint8_t feedback_buf[feedback_buf_size];
 
+volatile uint8_t uart_data_ready = 0;
+uint8_t shadow_rx_buf[rx_buf_size * 2]; // This is the CPU's private copy: large to hold accumulations
+char main_cmd_buf[128];                 // The CPU parses this in the while(1) loop
+
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
@@ -145,6 +150,7 @@ volatile uint8_t moveStepper4;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM4_Init(void);
@@ -249,6 +255,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
@@ -334,8 +341,8 @@ int main(void)
   //HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3); // B4
   HAL_TIM_Base_Start_IT(&htim6);	//scheduling interrupts
 
-  HAL_UART_Receive_IT(&huart5, &rx_byte, 1); // for incoming ros commands
-  //HAL_UART_Receive_IT(&huart5, buffer, 1);
+  //HAL_UART_Receive_IT(&huart5, &rx_byte, 1); // for incoming ros commands
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
 
   //Stepper_Enable(&stepper_handle_BL);
   /* USER CODE END 2 */
@@ -344,6 +351,11 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
+	  if (uart_data_ready) {
+		uart_data_ready = 0;
+		handle_command(main_cmd_buf);
+	  }
 
 	  if(!S1.isMoving && !WisEmpty(&S1.q)){
 		  Wrapper temp = dequeueW(&S1.q);
@@ -1158,6 +1170,23 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -1234,32 +1263,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	// check timer for interrupt
 	if(htim->Instance == TIM6){
 		control_loop = 1;
-//		if (cmd_count > 30) return;
-//
-//		c_angle += 5.0f;
-//
-//		if (c_angle >= 360.0f) {
-//		    c_angle -= 360.0f;
-//		    cmd_count++;
-//		}
-//
-//		float wrapped = clamp_deg_180_pos(c_angle);
-//
-//		enqueueW(&S1.q, (Wrapper){ wrapped, c_rpm });
-//		enqueueW(&S2.q, (Wrapper){ wrapped, c_rpm });
-//		enqueueW(&S3.q, (Wrapper){ wrapped, c_rpm });
-//		enqueueW(&S4.q, (Wrapper){ wrapped, c_rpm });
-
-
-		// stepper
-//		if (new_stepper_command == 1){
-//			if (!Stepper_IsMoving(&stepper_handle_BL)){
-//				angle_to_move = fabsf(stepper_target_angle);
-//				step_dir = (stepper_target_angle >= 0.0f) ? 0 : 1;
-//				Stepper_MoveAngle(&stepper_handle_BL, stepper_target_angle, 20.0f, step_dir);		// angle, 20 rpm, dir
-//				new_stepper_command = 0;
-//			}
-//		}
 	}
 
 	if (htim->Instance == S1.step_timer->Instance){
@@ -1327,24 +1330,111 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 //	}
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//{
+//    if (huart->Instance == UART5)
+//    {
+//    	callback_flag++;
+//        if (rx_byte == '\n' || rx_byte == '\r' || rx_byte == ';'){
+//       	rx_buf[rx_idx] = '\0';
+//       	handle_command(rx_buf);
+//        rx_idx = 0;
+//        }
+//        else{
+//        	if (rx_idx < rx_buf_size - 1)	rx_buf[rx_idx++] = rx_byte;
+//        	if (rx_idx >= rx_buf_size - 1)	rx_idx = 0;
+//        }
+//    }
+//    HAL_UART_Receive_IT(&huart5, &rx_byte, 1);
+//}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == UART5)
     {
-    	callback_flag++;
-        if (rx_byte == '\n' || rx_byte == '\r' || rx_byte == ';'){
-       	rx_buf[rx_idx] = '\0';
-       	handle_command(rx_buf);
-        rx_idx = 0;
-        }
-        else{
-        	if (rx_idx < rx_buf_size - 1)	rx_buf[rx_idx++] = rx_byte;
-        	if (rx_idx >= rx_buf_size - 1)	rx_idx = 0;
-        }
-    }
-    HAL_UART_Receive_IT(&huart5, &rx_byte, 1);
-}
+    	// 1:
 
+    	static uint16_t old_pos = 0;
+		static uint16_t shadow_idx = 0;
+		uint16_t len = 0;
+
+		// 1. Copy chunk from DMA buffer to our accumulator
+		if (Size > old_pos) {
+			len = Size - old_pos;
+			memcpy(&shadow_rx_buf[shadow_idx], &rx_buf[old_pos], len);
+		}
+		else if (Size < old_pos) {
+			len = rx_buf_size - old_pos;
+			memcpy(&shadow_rx_buf[shadow_idx], &rx_buf[old_pos], len);
+			memcpy(&shadow_rx_buf[shadow_idx + len], rx_buf, Size);
+			len += Size;
+		}
+
+		shadow_idx += len;
+		shadow_rx_buf[shadow_idx] = '\0'; // Seal string
+		old_pos = Size;
+
+		// 2. Find the LAST semicolon in the string
+		char *last_semi = strrchr((char*)shadow_rx_buf, ';');
+
+		if (last_semi != NULL) {
+			uint16_t split_index = (last_semi - (char*)shadow_rx_buf) + 1;
+			uint16_t leftover_len = shadow_idx - split_index;
+
+			// 3. Copy the COMPLETE commands to the main loop's buffer
+			// (If the main loop is slow, this safely overwrites old unread data with the newest ROS data)
+			memcpy(main_cmd_buf, shadow_rx_buf, split_index);
+			main_cmd_buf[split_index] = '\0';
+
+			uart_data_ready = 1; // Flag the main loop
+
+			// 4. Save the incomplete fragment (e.g., " B3 5") for the next interrupt
+			char temp_leftover[64];
+			if (leftover_len > 0) {
+				memcpy(temp_leftover, &shadow_rx_buf[split_index], leftover_len);
+				memcpy(shadow_rx_buf, temp_leftover, leftover_len);
+			}
+			shadow_idx = leftover_len;
+			shadow_rx_buf[shadow_idx] = '\0';
+		}
+		else if (shadow_idx >= sizeof(shadow_rx_buf) - 10) {
+			// Safety valve: Buffer full but no semicolon found. Flush it to prevent hardfaults.
+			shadow_idx = 0;
+		}
+
+    	// 2:
+
+//    	static uint16_t old_pos = 0;
+//		uint16_t len = 0;
+//
+//		if (Size > old_pos) {
+//			// data is in a single block
+//			len = Size - old_pos;
+//			memcpy(shadow_rx_buf, &rx_buf[old_pos], len);
+//		}
+//		else {
+//			// data wrapped around the end of rx_buf
+//			len = rx_buf_size - old_pos;
+//			memcpy(shadow_rx_buf, &rx_buf[old_pos], len);
+//			memcpy(&shadow_rx_buf[len], rx_buf, Size);
+//			len += Size;
+//		}
+//
+//		shadow_rx_buf[len] = '\0'; 	// seal the command string
+//		old_pos = Size;            	// update pointer for next Idle event
+//		uart_data_ready = 1;		// let main while calculate baaki ka
+
+    	// 3:
+
+//    	// Copy data immediately before anything can overwrite it
+//		memcpy(shadow_rx_buf, rx_buf, Size);
+//		shadow_rx_buf[Size] = '\0';
+//		uart_data_ready = 1;
+//
+//		// DMA is now free to fill rx_buf again while CPU parses shadow_rx_buf
+//		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
+    }
+}
 
 /* USER CODE END 4 */
 
