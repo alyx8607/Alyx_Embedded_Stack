@@ -17,7 +17,7 @@
 ../Core/Src/main.c:1136:13:MX_USART2_UART_Init	8	static
 ../Core/Src/main.c:1182:13:MX_DMA_Init	16	static
 ../Core/Src/main.c:1201:13:MX_GPIO_Init	48	static
-../Core/Src/main.c:1288:6:HAL_TIM_PeriodElapsedCallback	48	static
-../Core/Src/main.c:1389:6:HAL_UARTEx_RxEventCallback	96	static
-../Core/Src/main.c:1436:6:HAL_GPIO_EXTI_Callback	16	static
-../Core/Src/main.c:1480:6:Error_Handler	4	static,ignoring_inline_asm
+../Core/Src/main.c:1282:6:HAL_TIM_PeriodElapsedCallback	48	static
+../Core/Src/main.c:1383:6:HAL_UARTEx_RxEventCallback	96	static
+../Core/Src/main.c:1430:6:HAL_GPIO_EXTI_Callback	16	static
+../Core/Src/main.c:1474:6:Error_Handler	4	static,ignoring_inline_asm

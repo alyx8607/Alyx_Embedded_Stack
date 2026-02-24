@@ -289,10 +289,10 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95);
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95);
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -102);
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -89);
   Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95);
-  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95);
+  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94);
 
   initTimer(&S1);
   initTimer(&S2);
@@ -351,9 +351,9 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   S1.homing_status = 1;
-  S2.homing_status = 1;
-  S3.homing_status = 1;
-  S4.homing_status = 1;
+  S2.homing_status = 0;
+  S3.homing_status = 0;
+  S4.homing_status = 0;
   while (1)
   {
 	  if (mode == IDLE) mode = TELEOP; //forcing teleop instead of idle for now, will change when switches.
@@ -1223,10 +1223,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOB, S3_DIR_Pin|B2_DIR_Pin|B1_DIR_Pin|S3_ENA_Pin
                           |S1_DIR_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : S1_LIM_Pin S4_LIM_Pin */
-  GPIO_InitStruct.Pin = S1_LIM_Pin|S4_LIM_Pin;
+  /*Configure GPIO pins : S1_LIM_Pin S4_LIM_Pin S3_LIM_Pin */
+  GPIO_InitStruct.Pin = S1_LIM_Pin|S4_LIM_Pin|S3_LIM_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : S1_ENA_Pin S2_ENA_Pin B4_DIR_Pin S4_DIR_Pin
@@ -1254,12 +1254,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : S3_LIM_Pin */
-  GPIO_InitStruct.Pin = S3_LIM_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(S3_LIM_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : POSSIBLE_ESTOP_Pin */
   GPIO_InitStruct.Pin = POSSIBLE_ESTOP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
@@ -1269,7 +1263,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : S2_LIM_Pin */
   GPIO_InitStruct.Pin = S2_LIM_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(S2_LIM_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/

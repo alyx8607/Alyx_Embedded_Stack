@@ -3890,86 +3890,86 @@ LOAD C:/ST/STM32CubeIDE_1.14.1/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.ext
                 0x08001804       0xfc ./Core/Src/Stepperv2.o
                 0x08001804                moveAngle
  .text.moveAngleAbsolute
-                0x08001900      0x29c ./Core/Src/Stepperv2.o
+                0x08001900      0x2ac ./Core/Src/Stepperv2.o
                 0x08001900                moveAngleAbsolute
  .text.initWQueue
-                0x08001b9c       0x5a ./Core/Src/Stepperv2.o
-                0x08001b9c                initWQueue
- *fill*         0x08001bf6        0x2 
+                0x08001bac       0x5a ./Core/Src/Stepperv2.o
+                0x08001bac                initWQueue
+ *fill*         0x08001c06        0x2 
  .text.enqueueW
-                0x08001bf8       0xbc ./Core/Src/Stepperv2.o
-                0x08001bf8                enqueueW
+                0x08001c08       0xbc ./Core/Src/Stepperv2.o
+                0x08001c08                enqueueW
  .text.dequeueW
-                0x08001cb4       0xec ./Core/Src/Stepperv2.o
-                0x08001cb4                dequeueW
+                0x08001cc4       0xec ./Core/Src/Stepperv2.o
+                0x08001cc4                dequeueW
  .text.WisEmpty
-                0x08001da0       0x26 ./Core/Src/Stepperv2.o
-                0x08001da0                WisEmpty
+                0x08001db0       0x26 ./Core/Src/Stepperv2.o
+                0x08001db0                WisEmpty
  .text.Queue_init
-                0x08001dc6       0x24 ./Core/Src/encoder.o
-                0x08001dc6                Queue_init
- *fill*         0x08001dea        0x2 
- .text.enqueue  0x08001dec       0x98 ./Core/Src/encoder.o
-                0x08001dec                enqueue
- .text.dequeue  0x08001e84       0x90 ./Core/Src/encoder.o
-                0x08001e84                dequeue
- .text.MA_init  0x08001f14      0x134 ./Core/Src/encoder.o
-                0x08001f14                MA_init
- .text.calc_MA  0x08002048      0x120 ./Core/Src/encoder.o
-                0x08002048                calc_MA
+                0x08001dd6       0x24 ./Core/Src/encoder.o
+                0x08001dd6                Queue_init
+ *fill*         0x08001dfa        0x2 
+ .text.enqueue  0x08001dfc       0x98 ./Core/Src/encoder.o
+                0x08001dfc                enqueue
+ .text.dequeue  0x08001e94       0x90 ./Core/Src/encoder.o
+                0x08001e94                dequeue
+ .text.MA_init  0x08001f24      0x134 ./Core/Src/encoder.o
+                0x08001f24                MA_init
+ .text.calc_MA  0x08002058      0x120 ./Core/Src/encoder.o
+                0x08002058                calc_MA
  .text.Encoder_Create
-                0x08002168       0x4e ./Core/Src/encoder.o
-                0x08002168                Encoder_Create
+                0x08002178       0x4e ./Core/Src/encoder.o
+                0x08002178                Encoder_Create
  .text.Encoder_Start
-                0x080021b6       0x34 ./Core/Src/encoder.o
-                0x080021b6                Encoder_Start
- *fill*         0x080021ea        0x2 
+                0x080021c6       0x34 ./Core/Src/encoder.o
+                0x080021c6                Encoder_Start
+ *fill*         0x080021fa        0x2 
  .text.Encoder_GetSpeedRPM
-                0x080021ec       0xc8 ./Core/Src/encoder.o
-                0x080021ec                Encoder_GetSpeedRPM
+                0x080021fc       0xc8 ./Core/Src/encoder.o
+                0x080021fc                Encoder_GetSpeedRPM
  .text.TIM6_SetPeriod_us
-                0x080022b4       0x58 ./Core/Src/main.o
-                0x080022b4                TIM6_SetPeriod_us
+                0x080022c4       0x58 ./Core/Src/main.o
+                0x080022c4                TIM6_SetPeriod_us
  .text.DWT_Init
-                0x0800230c       0x40 ./Core/Src/main.o
-                0x0800230c                DWT_Init
+                0x0800231c       0x40 ./Core/Src/main.o
+                0x0800231c                DWT_Init
  .text.delay_us
-                0x0800234c       0x4c ./Core/Src/main.o
-                0x0800234c                delay_us
- .text.main     0x08002398      0x97c ./Core/Src/main.o
-                0x08002398                main
+                0x0800235c       0x4c ./Core/Src/main.o
+                0x0800235c                delay_us
+ .text.main     0x080023a8      0x988 ./Core/Src/main.o
+                0x080023a8                main
  .text.SystemClock_Config
-                0x08002d14       0x92 ./Core/Src/main.o
-                0x08002d14                SystemClock_Config
- *fill*         0x08002da6        0x2 
+                0x08002d30       0x92 ./Core/Src/main.o
+                0x08002d30                SystemClock_Config
+ *fill*         0x08002dc2        0x2 
  .text.MX_TIM1_Init
-                0x08002da8       0xb4 ./Core/Src/main.o
+                0x08002dc4       0xb4 ./Core/Src/main.o
  .text.MX_TIM2_Init
-                0x08002e5c       0xa8 ./Core/Src/main.o
+                0x08002e78       0xa8 ./Core/Src/main.o
  .text.MX_TIM3_Init
-                0x08002f04       0xf8 ./Core/Src/main.o
+                0x08002f20       0xf8 ./Core/Src/main.o
  .text.MX_TIM4_Init
-                0x08002ffc       0xac ./Core/Src/main.o
+                0x08003018       0xac ./Core/Src/main.o
  .text.MX_TIM6_Init
-                0x080030a8       0x6c ./Core/Src/main.o
+                0x080030c4       0x6c ./Core/Src/main.o
  .text.MX_TIM8_Init
-                0x08003114       0xb4 ./Core/Src/main.o
+                0x08003130       0xb4 ./Core/Src/main.o
  .text.MX_TIM15_Init
-                0x080031c8      0x11c ./Core/Src/main.o
+                0x080031e4      0x11c ./Core/Src/main.o
  .text.MX_TIM16_Init
-                0x080032e4      0x104 ./Core/Src/main.o
+                0x08003300      0x104 ./Core/Src/main.o
  .text.MX_TIM17_Init
-                0x080033e8      0x104 ./Core/Src/main.o
+                0x08003404      0x104 ./Core/Src/main.o
  .text.MX_TIM20_Init
-                0x080034ec      0x138 ./Core/Src/main.o
+                0x08003508      0x138 ./Core/Src/main.o
  .text.MX_UART5_Init
-                0x08003624       0x98 ./Core/Src/main.o
+                0x08003640       0x98 ./Core/Src/main.o
  .text.MX_USART2_UART_Init
-                0x080036bc       0x98 ./Core/Src/main.o
+                0x080036d8       0x98 ./Core/Src/main.o
  .text.MX_DMA_Init
-                0x08003754       0x54 ./Core/Src/main.o
+                0x08003770       0x54 ./Core/Src/main.o
  .text.MX_GPIO_Init
-                0x080037a8      0x1b0 ./Core/Src/main.o
+                0x080037c4      0x194 ./Core/Src/main.o
  .text.HAL_TIM_PeriodElapsedCallback
                 0x08003958      0x20c ./Core/Src/main.o
                 0x08003958                HAL_TIM_PeriodElapsedCallback
@@ -5465,9 +5465,9 @@ LOAD C:/ST/STM32CubeIDE_1.14.1/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.ext
  .debug_macro   0x00021261      0x1da ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart_ex.o
 
 .debug_line     0x00000000    0x177c8
- .debug_line    0x00000000      0xf51 ./Core/Src/Stepperv2.o
- .debug_line    0x00000f51      0xb97 ./Core/Src/encoder.o
- .debug_line    0x00001ae8     0x164e ./Core/Src/main.o
+ .debug_line    0x00000000      0xf5b ./Core/Src/Stepperv2.o
+ .debug_line    0x00000f5b      0xb97 ./Core/Src/encoder.o
+ .debug_line    0x00001af2     0x1644 ./Core/Src/main.o
  .debug_line    0x00003136      0xc05 ./Core/Src/motor_driver.o
  .debug_line    0x00003d3b      0xb1e ./Core/Src/pid_controller.o
  .debug_line    0x00004859      0xb0c ./Core/Src/stm32g4xx_hal_msp.o
@@ -5490,7 +5490,7 @@ LOAD C:/ST/STM32CubeIDE_1.14.1/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.ext
 
 .debug_str      0x00000000    0xd1931
  .debug_str     0x00000000    0xd1931 ./Core/Src/Stepperv2.o
-                              0xc9ad6 (size before relaxing)
+                              0xc9ac9 (size before relaxing)
  .debug_str     0x000d1931    0xc90e7 ./Core/Src/encoder.o
  .debug_str     0x000d1931    0xcb835 ./Core/Src/main.o
  .debug_str     0x000d1931    0xca1ad ./Core/Src/motor_driver.o

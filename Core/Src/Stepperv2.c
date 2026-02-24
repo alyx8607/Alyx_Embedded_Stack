@@ -278,8 +278,8 @@ void moveAngleAbsolute(Stepper_Handle_t* stepper, float absolute_angle, float rp
 		float startAngleB = fmodf(currAngle_360 + 180.0f, 360.0f);
 		float deltaA = calcAngularDiff(targetAngle_360, startAngleA);
 		float deltaB = calcAngularDiff(targetAngle_360, startAngleB);
-		uint8_t deadA = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaA, deltaA > 0, stepper->limSwitchOffset, 10);
-		uint8_t deadB = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaB, deltaB > 0, stepper->limSwitchOffset, 10);
+		uint8_t deadA = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaA, deltaA > 0, stepper->limSwitchOffset - 11.5f, 35);
+		uint8_t deadB = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaB, deltaB > 0, stepper->limSwitchOffset - 11.5f, 35);
 		if(deadA){
 			if(deadB) return; //hope it never hits this
 			delta = deltaB;
