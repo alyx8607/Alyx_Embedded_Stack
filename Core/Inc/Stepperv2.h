@@ -65,6 +65,8 @@ typedef struct{
 	float limSwitchOffset; //offset of limit switch from true 0
 	uint8_t correctOffset; //0 -> not initiated/initiated and completed, 1 -> send command to correct offset, 2 -> correcting offset currently
 	uint8_t homing_status; //homing_status & !correctOffset -> offset has been corrected, homing is ready
+	float db_lower_bound;
+	float db_upper_bound;
 
 	//constraints stuff
 	uint8_t constraintMode;//0 -> follows commands as is, 1-> makes decisions based on the following constraints:
@@ -89,7 +91,9 @@ void Stepper_Create(
     uint8_t queueMode,
 	uint8_t rpm_smoothening,
 	uint8_t constraintMode,
-	float limSwitchOffset
+	float limSwitchOffset,
+	float db_lower_bound,
+	float db_upper_bound
 );
 
 void initTimer(Stepper_Handle_t* handle);

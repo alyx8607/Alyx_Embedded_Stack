@@ -64,30 +64,48 @@ uint8_t arcContains(float start, float end, uint8_t dir, float angle){
     }
 }
 
-static uint8_t angleInDeadband(float angle, float center, float halfWidth)
+static uint8_t angleInDeadband(float angle, float lower, float upper)
 {
-    float diff = clamp_deg_180_pos(angle - center);
-    return fabsf(diff) <= halfWidth;
+    angle = wrap360(angle);
+    lower = wrap360(lower);
+    upper = wrap360(upper);
+
+    if (lower <= upper)
+        return (angle >= lower && angle <= upper);
+    else
+        return (angle >= lower || angle <= upper);  // wraps past 0
 }
 
-uint8_t checkDeadband(float startAngle, float endAngle, uint8_t dir, float avoid, int deadbandSize)
+uint8_t checkDeadband(float startAngle, float endAngle, uint8_t dir, float db_lower_bound, float db_upper_bound)
 {
-    float half = deadbandSize / 2.0f;
-
-    float lDB = wrap360(avoid - half);
-    float uDB = wrap360(avoid + half);
+    float lDB = wrap360(db_lower_bound);
+    float uDB = wrap360(db_upper_bound);
 
     uint8_t l_hit = arcContains(startAngle, endAngle, dir, lDB);
     uint8_t u_hit = arcContains(startAngle, endAngle, dir, uDB);
 
-    uint8_t start_inside = angleInDeadband(startAngle, avoid, half);
-    uint8_t end_inside   = angleInDeadband(endAngle, avoid, half);
+    uint8_t start_inside = angleInDeadband(startAngle, lDB, uDB);
+    uint8_t end_inside   = angleInDeadband(endAngle, lDB, uDB);
 
     return l_hit || u_hit || (start_inside && end_inside);
 }
 
-void Stepper_Create(Stepper_Handle_t* handle, TIM_HandleTypeDef* step_timer ,uint32_t step_channel, GPIO_TypeDef* step_dir_port, uint16_t step_dir_pin,  GPIO_TypeDef* ena_port, uint16_t ena_pin, uint16_t steps_per_rev, uint8_t queueMode, uint8_t rpm_smoothening, uint8_t constraintMode, float limSwitchOffset){
-
+void Stepper_Create
+	(Stepper_Handle_t* handle,
+	 TIM_HandleTypeDef* step_timer,
+	 uint32_t step_channel,
+	 GPIO_TypeDef* step_dir_port,
+	 uint16_t step_dir_pin,
+	 GPIO_TypeDef* ena_port,
+	 uint16_t ena_pin,
+	 uint16_t steps_per_rev,
+	 uint8_t queueMode,
+	 uint8_t rpm_smoothening,
+	 uint8_t constraintMode,
+	 float limSwitchOffset,
+	 float db_lower_bound,
+	 float db_upper_bound)
+{
 	if (handle == NULL) return;
 
 	handle->step_timer = step_timer;
@@ -120,6 +138,8 @@ void Stepper_Create(Stepper_Handle_t* handle, TIM_HandleTypeDef* step_timer ,uin
 	handle->correctOffset = 0;
 	handle->constraintMode = constraintMode;
 	handle->limSwitchOffset = limSwitchOffset;
+	handle->db_lower_bound = db_lower_bound;
+	handle->db_upper_bound = db_upper_bound;
 }
 
 void initTimer(Stepper_Handle_t* handle){
@@ -278,8 +298,8 @@ void moveAngleAbsolute(Stepper_Handle_t* stepper, float absolute_angle, float rp
 		float startAngleB = fmodf(currAngle_360 + 180.0f, 360.0f);
 		float deltaA = calcAngularDiff(targetAngle_360, startAngleA);
 		float deltaB = calcAngularDiff(targetAngle_360, startAngleB);
-		uint8_t deadA = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaA, deltaA > 0, stepper->limSwitchOffset - 11.5f, 35);
-		uint8_t deadB = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaB, deltaB > 0, stepper->limSwitchOffset - 11.5f, 35);
+		uint8_t deadA = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaA, deltaA > 0, stepper->db_lower_bound, stepper->db_upper_bound);
+		uint8_t deadB = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaB, deltaB > 0, stepper->db_lower_bound, stepper->db_upper_bound);
 		if(deadA){
 			if(deadB) return; //hope it never hits this
 			delta = deltaB;
