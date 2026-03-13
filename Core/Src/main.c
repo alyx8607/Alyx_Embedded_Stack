@@ -133,6 +133,10 @@ volatile uint8_t uart_data_ready = 0;
 uint8_t shadow_rx_buf[rx_buf_size * 2]; // This is the CPU's private copy: large to hold accumulations
 char main_cmd_buf[128];                 // The CPU parses this in the while(1) loop
 
+// UART stop waala error (YOU ARE T) lololol
+volatile uint8_t error_entered = 0;
+volatile uint32_t last_error;
+
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
@@ -289,10 +293,10 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -99, -127, -94);
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -92, -120, -86);
-  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95, -125, -90);
-  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94, -123, -90);
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -98, -127, -94);	// -99
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -120, -86);	// -92
+  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -96.5, -125, -90);	// -95
+  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94.5, -123, -90);	// -94
 
   initTimer(&S1);
   initTimer(&S2);
@@ -416,17 +420,17 @@ int main(void)
 
 			if (control_loop){
 				b1_current_rpm = Encoder_GetSpeedRPM(&E1);
-				b1_control_signal = PID_Compute(&pid_b1, (float)B1.mode ? b1_target_rpm : -b1_target_rpm, b1_current_rpm);
+				b1_control_signal = PID_Compute(&pid_b1, (float)B1.mode ? -b1_target_rpm : b1_target_rpm, b1_current_rpm);
 				//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
 				Motor_SetOutput(&B1, b1_control_signal);
 				b2_current_rpm = Encoder_GetSpeedRPM(&E2);
 				b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);
 				Motor_SetOutput(&B2, b2_control_signal);
 				b3_current_rpm = Encoder_GetSpeedRPM(&E3);
-				b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? b3_target_rpm : -b3_target_rpm, b3_current_rpm);
+				b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? -b3_target_rpm : b3_target_rpm, b3_current_rpm);
 				Motor_SetOutput(&B3, b3_control_signal);
 				b4_current_rpm = Encoder_GetSpeedRPM(&E4);
-				b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? b4_target_rpm : -b4_target_rpm, b4_current_rpm);
+				b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? -b4_target_rpm : b4_target_rpm, b4_current_rpm);
 				Motor_SetOutput(&B4, b4_control_signal);
 
 		//		int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
@@ -1425,6 +1429,23 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 		else if (shadow_idx >= sizeof(shadow_rx_buf) - 10)
 			shadow_idx = 0;										// full buffer but no semicolons
     }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
+	if (huart->Instance == UART5){
+
+		error_entered++;					// for debugging
+		last_error = huart->ErrorCode;		// check huart5.Instance->ISR in live expressions, might give more info
+
+		// clear flags at error
+		__HAL_UART_CLEAR_OREFLAG(huart);
+		__HAL_UART_CLEAR_NEFLAG(huart);
+		__HAL_UART_CLEAR_FEFLAG(huart);
+
+		// restart UART DMA
+		HAL_UART_AbortReceive(huart);
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
+	}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
