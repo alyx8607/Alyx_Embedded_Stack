@@ -33,7 +33,6 @@ void Motor_Create(Motor_Handle_t* handle, TIM_HandleTypeDef* pwm_timer, uint32_t
 // Akshat parse for scaling to 8 motors:
 void handle_command(char *cmd)
 {
-	wdt_active = 0;		// out of watchdog mode whenever next command comes
 	const char *p = cmd;
 
 	while (*p){
