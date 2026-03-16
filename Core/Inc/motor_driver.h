@@ -15,6 +15,8 @@ extern volatile int b2_target_rpm;
 extern volatile int b3_target_rpm;
 extern volatile int b4_target_rpm;
 
+extern volatile uint8_t wdt_active;
+
 typedef struct{
     TIM_HandleTypeDef* pwm_timer;
     uint32_t pwm_channel;
