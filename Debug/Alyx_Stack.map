@@ -5502,10 +5502,10 @@ LOAD C:/ST/STM32CubeIDE_1.14.1/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.ext
 
 .debug_str      0x00000000    0xd1946
  .debug_str     0x00000000    0xd1946 ./Core/Src/Stepperv2.o
-                              0xc9ad2 (size before relaxing)
+                              0xc9ac5 (size before relaxing)
  .debug_str     0x000d1946    0xc90e7 ./Core/Src/encoder.o
  .debug_str     0x000d1946    0xcb899 ./Core/Src/main.o
- .debug_str     0x000d1946    0xca1d8 ./Core/Src/motor_driver.o
+ .debug_str     0x000d1946    0xca1cb ./Core/Src/motor_driver.o
  .debug_str     0x000d1946    0xc8a48 ./Core/Src/pid_controller.o
  .debug_str     0x000d1946    0xc61aa ./Core/Src/stm32g4xx_hal_msp.o
  .debug_str     0x000d1946    0xc5937 ./Core/Src/stm32g4xx_it.o

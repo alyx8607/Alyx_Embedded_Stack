@@ -1226,14 +1226,23 @@ Disassembly of section .text:
  8000f22:	bf00      	nop
 
 08000f24 <clamp_deg_180_pos>:
+ *      Author: Soham Saxena
+ */
+
+#include "Stepperv2.h"
+static inline float clamp_deg_180_pos(float a)
+{
  8000f24:	b580      	push	{r7, lr}
  8000f26:	b082      	sub	sp, #8
  8000f28:	af00      	add	r7, sp, #0
  8000f2a:	ed87 0a01 	vstr	s0, [r7, #4]
+    a = fmodf(a, 360.0f);
  8000f2e:	eddf 0a19 	vldr	s1, [pc, #100]	@ 8000f94 <clamp_deg_180_pos+0x70>
  8000f32:	ed97 0a01 	vldr	s0, [r7, #4]
  8000f36:	f00b fdf3 	bl	800cb20 <fmodf>
  8000f3a:	ed87 0a01 	vstr	s0, [r7, #4]
+
+    if (a <= -180.0f) a += 360.0f;  // -180 → +180
  8000f3e:	edd7 7a01 	vldr	s15, [r7, #4]
  8000f42:	ed9f 7a15 	vldr	s14, [pc, #84]	@ 8000f98 <clamp_deg_180_pos+0x74>
  8000f46:	eef4 7ac7 	vcmpe.f32	s15, s14
@@ -1243,6 +1252,7 @@ Disassembly of section .text:
  8000f54:	ed9f 7a0f 	vldr	s14, [pc, #60]	@ 8000f94 <clamp_deg_180_pos+0x70>
  8000f58:	ee77 7a87 	vadd.f32	s15, s15, s14
  8000f5c:	edc7 7a01 	vstr	s15, [r7, #4]
+    if (a >  180.0f)  a -= 360.0f;
  8000f60:	edd7 7a01 	vldr	s15, [r7, #4]
  8000f64:	ed9f 7a0d 	vldr	s14, [pc, #52]	@ 8000f9c <clamp_deg_180_pos+0x78>
  8000f68:	eef4 7ac7 	vcmpe.f32	s15, s14
@@ -1252,8 +1262,11 @@ Disassembly of section .text:
  8000f76:	ed9f 7a07 	vldr	s14, [pc, #28]	@ 8000f94 <clamp_deg_180_pos+0x70>
  8000f7a:	ee77 7ac7 	vsub.f32	s15, s15, s14
  8000f7e:	edc7 7a01 	vstr	s15, [r7, #4]
+
+    return a;   // (-180, 180]
  8000f82:	687b      	ldr	r3, [r7, #4]
  8000f84:	ee07 3a90 	vmov	s15, r3
+}
  8000f88:	eeb0 0a67 	vmov.f32	s0, s15
  8000f8c:	3708      	adds	r7, #8
  8000f8e:	46bd      	mov	sp, r7
@@ -1264,14 +1277,18 @@ Disassembly of section .text:
  8000f9c:	43340000 	.word	0x43340000
 
 08000fa0 <wrap360>:
+static inline float wrap360(float a)
+{
  8000fa0:	b580      	push	{r7, lr}
  8000fa2:	b082      	sub	sp, #8
  8000fa4:	af00      	add	r7, sp, #0
  8000fa6:	ed87 0a01 	vstr	s0, [r7, #4]
+    a = fmodf(a, 360.0f);
  8000faa:	eddf 0a0f 	vldr	s1, [pc, #60]	@ 8000fe8 <wrap360+0x48>
  8000fae:	ed97 0a01 	vldr	s0, [r7, #4]
  8000fb2:	f00b fdb5 	bl	800cb20 <fmodf>
  8000fb6:	ed87 0a01 	vstr	s0, [r7, #4]
+    if (a < 0) a += 360.0f;
  8000fba:	edd7 7a01 	vldr	s15, [r7, #4]
  8000fbe:	eef5 7ac0 	vcmpe.f32	s15, #0.0
  8000fc2:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
@@ -1280,8 +1297,10 @@ Disassembly of section .text:
  8000fcc:	ed9f 7a06 	vldr	s14, [pc, #24]	@ 8000fe8 <wrap360+0x48>
  8000fd0:	ee77 7a87 	vadd.f32	s15, s15, s14
  8000fd4:	edc7 7a01 	vstr	s15, [r7, #4]
+    return a;
  8000fd8:	687b      	ldr	r3, [r7, #4]
  8000fda:	ee07 3a90 	vmov	s15, r3
+}
  8000fde:	eeb0 0a67 	vmov.f32	s0, s15
  8000fe2:	3708      	adds	r7, #8
  8000fe4:	46bd      	mov	sp, r7
@@ -1289,15 +1308,23 @@ Disassembly of section .text:
  8000fe8:	43b40000 	.word	0x43b40000
 
 08000fec <calcAngularDiff>:
+//    else if (channel == TIM_CHANNEL_4) {
+//        htim->Instance->CCMR2 |= TIM_CCMR2_OC4PE;
+//    }
+//}
+
+float calcAngularDiff(float a, float b){
  8000fec:	b480      	push	{r7}
  8000fee:	b085      	sub	sp, #20
  8000ff0:	af00      	add	r7, sp, #0
  8000ff2:	ed87 0a01 	vstr	s0, [r7, #4]
  8000ff6:	edc7 0a00 	vstr	s1, [r7]
+	float result = a - b;
  8000ffa:	ed97 7a01 	vldr	s14, [r7, #4]
  8000ffe:	edd7 7a00 	vldr	s15, [r7]
  8001002:	ee77 7a67 	vsub.f32	s15, s14, s15
  8001006:	edc7 7a03 	vstr	s15, [r7, #12]
+	if (result < -180) result += 360;
  800100a:	edd7 7a03 	vldr	s15, [r7, #12]
  800100e:	ed9f 7a15 	vldr	s14, [pc, #84]	@ 8001064 <calcAngularDiff+0x78>
  8001012:	eef4 7ac7 	vcmpe.f32	s15, s14
@@ -1308,6 +1335,7 @@ Disassembly of section .text:
  8001024:	ee77 7a87 	vadd.f32	s15, s15, s14
  8001028:	edc7 7a03 	vstr	s15, [r7, #12]
  800102c:	e010      	b.n	8001050 <calcAngularDiff+0x64>
+	else if (result > 180) result -= 360;
  800102e:	edd7 7a03 	vldr	s15, [r7, #12]
  8001032:	ed9f 7a0e 	vldr	s14, [pc, #56]	@ 800106c <calcAngularDiff+0x80>
  8001036:	eef4 7ac7 	vcmpe.f32	s15, s14
@@ -1317,8 +1345,11 @@ Disassembly of section .text:
  8001044:	ed9f 7a08 	vldr	s14, [pc, #32]	@ 8001068 <calcAngularDiff+0x7c>
  8001048:	ee77 7ac7 	vsub.f32	s15, s15, s14
  800104c:	edc7 7a03 	vstr	s15, [r7, #12]
+
+	return result;
  8001050:	68fb      	ldr	r3, [r7, #12]
  8001052:	ee07 3a90 	vmov	s15, r3
+}
  8001056:	eeb0 0a67 	vmov.f32	s0, s15
  800105a:	3714      	adds	r7, #20
  800105c:	46bd      	mov	sp, r7
@@ -1329,6 +1360,8 @@ Disassembly of section .text:
  800106c:	43340000 	.word	0x43340000
 
 08001070 <arcContains>:
+
+uint8_t arcContains(float start, float end, uint8_t dir, float angle){
  8001070:	b580      	push	{r7, lr}
  8001072:	b084      	sub	sp, #16
  8001074:	af00      	add	r7, sp, #0
@@ -1337,23 +1370,30 @@ Disassembly of section .text:
  800107e:	4603      	mov	r3, r0
  8001080:	ed87 1a00 	vstr	s2, [r7]
  8001084:	71fb      	strb	r3, [r7, #7]
+    start = wrap360(start);
  8001086:	ed97 0a03 	vldr	s0, [r7, #12]
  800108a:	f7ff ff89 	bl	8000fa0 <wrap360>
  800108e:	ed87 0a03 	vstr	s0, [r7, #12]
+    end   = wrap360(end);
  8001092:	ed97 0a02 	vldr	s0, [r7, #8]
  8001096:	f7ff ff83 	bl	8000fa0 <wrap360>
  800109a:	ed87 0a02 	vstr	s0, [r7, #8]
+    angle = wrap360(angle);
  800109e:	ed97 0a00 	vldr	s0, [r7]
  80010a2:	f7ff ff7d 	bl	8000fa0 <wrap360>
  80010a6:	ed87 0a00 	vstr	s0, [r7]
+
+    if(dir == 1){  // CCW (increasing angle)
  80010aa:	79fb      	ldrb	r3, [r7, #7]
  80010ac:	2b01      	cmp	r3, #1
  80010ae:	d136      	bne.n	800111e <arcContains+0xae>
+        if(start <= end)
  80010b0:	ed97 7a03 	vldr	s14, [r7, #12]
  80010b4:	edd7 7a02 	vldr	s15, [r7, #8]
  80010b8:	eeb4 7ae7 	vcmpe.f32	s14, s15
  80010bc:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
  80010c0:	d816      	bhi.n	80010f0 <arcContains+0x80>
+            return angle >= start && angle <= end;
  80010c2:	ed97 7a00 	vldr	s14, [r7]
  80010c6:	edd7 7a03 	vldr	s15, [r7, #12]
  80010ca:	eeb4 7ae7 	vcmpe.f32	s14, s15
@@ -1369,6 +1409,8 @@ Disassembly of section .text:
  80010ea:	2300      	movs	r3, #0
  80010ec:	b2db      	uxtb	r3, r3
  80010ee:	e04c      	b.n	800118a <arcContains+0x11a>
+        else  // wraps past 0
+            return angle >= start || angle <= end;
  80010f0:	ed97 7a00 	vldr	s14, [r7]
  80010f4:	edd7 7a03 	vldr	s15, [r7, #12]
  80010f8:	eeb4 7ae7 	vcmpe.f32	s14, s15
@@ -1384,11 +1426,14 @@ Disassembly of section .text:
  8001118:	2300      	movs	r3, #0
  800111a:	b2db      	uxtb	r3, r3
  800111c:	e035      	b.n	800118a <arcContains+0x11a>
+    } else {        // CW
+        if(start >= end)
  800111e:	ed97 7a03 	vldr	s14, [r7, #12]
  8001122:	edd7 7a02 	vldr	s15, [r7, #8]
  8001126:	eeb4 7ae7 	vcmpe.f32	s14, s15
  800112a:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
  800112e:	db16      	blt.n	800115e <arcContains+0xee>
+            return angle <= start && angle >= end;
  8001130:	ed97 7a00 	vldr	s14, [r7]
  8001134:	edd7 7a03 	vldr	s15, [r7, #12]
  8001138:	eeb4 7ae7 	vcmpe.f32	s14, s15
@@ -1404,6 +1449,8 @@ Disassembly of section .text:
  8001158:	2300      	movs	r3, #0
  800115a:	b2db      	uxtb	r3, r3
  800115c:	e015      	b.n	800118a <arcContains+0x11a>
+        else
+            return angle <= start || angle >= end;
  800115e:	ed97 7a00 	vldr	s14, [r7]
  8001162:	edd7 7a03 	vldr	s15, [r7, #12]
  8001166:	eeb4 7ae7 	vcmpe.f32	s14, s15
@@ -1418,32 +1465,43 @@ Disassembly of section .text:
  8001184:	e000      	b.n	8001188 <arcContains+0x118>
  8001186:	2300      	movs	r3, #0
  8001188:	b2db      	uxtb	r3, r3
+    }
+}
  800118a:	4618      	mov	r0, r3
  800118c:	3710      	adds	r7, #16
  800118e:	46bd      	mov	sp, r7
  8001190:	bd80      	pop	{r7, pc}
 
 08001192 <angleInDeadband>:
+
+static uint8_t angleInDeadband(float angle, float lower, float upper)
+{
  8001192:	b580      	push	{r7, lr}
  8001194:	b084      	sub	sp, #16
  8001196:	af00      	add	r7, sp, #0
  8001198:	ed87 0a03 	vstr	s0, [r7, #12]
  800119c:	edc7 0a02 	vstr	s1, [r7, #8]
  80011a0:	ed87 1a01 	vstr	s2, [r7, #4]
+    angle = wrap360(angle);
  80011a4:	ed97 0a03 	vldr	s0, [r7, #12]
  80011a8:	f7ff fefa 	bl	8000fa0 <wrap360>
  80011ac:	ed87 0a03 	vstr	s0, [r7, #12]
+    lower = wrap360(lower);
  80011b0:	ed97 0a02 	vldr	s0, [r7, #8]
  80011b4:	f7ff fef4 	bl	8000fa0 <wrap360>
  80011b8:	ed87 0a02 	vstr	s0, [r7, #8]
+    upper = wrap360(upper);
  80011bc:	ed97 0a01 	vldr	s0, [r7, #4]
  80011c0:	f7ff feee 	bl	8000fa0 <wrap360>
  80011c4:	ed87 0a01 	vstr	s0, [r7, #4]
+
+    if (lower <= upper)
  80011c8:	ed97 7a02 	vldr	s14, [r7, #8]
  80011cc:	edd7 7a01 	vldr	s15, [r7, #4]
  80011d0:	eeb4 7ae7 	vcmpe.f32	s14, s15
  80011d4:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
  80011d8:	d816      	bhi.n	8001208 <angleInDeadband+0x76>
+        return (angle >= lower && angle <= upper);
  80011da:	ed97 7a03 	vldr	s14, [r7, #12]
  80011de:	edd7 7a02 	vldr	s15, [r7, #8]
  80011e2:	eeb4 7ae7 	vcmpe.f32	s14, s15
@@ -1459,6 +1517,8 @@ Disassembly of section .text:
  8001202:	2300      	movs	r3, #0
  8001204:	b2db      	uxtb	r3, r3
  8001206:	e015      	b.n	8001234 <angleInDeadband+0xa2>
+    else
+        return (angle >= lower || angle <= upper);  // wraps past 0
  8001208:	ed97 7a03 	vldr	s14, [r7, #12]
  800120c:	edd7 7a02 	vldr	s15, [r7, #8]
  8001210:	eeb4 7ae7 	vcmpe.f32	s14, s15
@@ -1473,12 +1533,16 @@ Disassembly of section .text:
  800122e:	e000      	b.n	8001232 <angleInDeadband+0xa0>
  8001230:	2300      	movs	r3, #0
  8001232:	b2db      	uxtb	r3, r3
+}
  8001234:	4618      	mov	r0, r3
  8001236:	3710      	adds	r7, #16
  8001238:	46bd      	mov	sp, r7
  800123a:	bd80      	pop	{r7, pc}
 
 0800123c <checkDeadband>:
+
+uint8_t checkDeadband(float startAngle, float endAngle, uint8_t dir, float db_lower_bound, float db_upper_bound)
+{
  800123c:	b580      	push	{r7, lr}
  800123e:	b08a      	sub	sp, #40	@ 0x28
  8001240:	af00      	add	r7, sp, #0
@@ -1488,12 +1552,16 @@ Disassembly of section .text:
  800124c:	ed87 1a02 	vstr	s2, [r7, #8]
  8001250:	edc7 1a01 	vstr	s3, [r7, #4]
  8001254:	73fb      	strb	r3, [r7, #15]
+    float lDB = wrap360(db_lower_bound);
  8001256:	ed97 0a02 	vldr	s0, [r7, #8]
  800125a:	f7ff fea1 	bl	8000fa0 <wrap360>
  800125e:	ed87 0a09 	vstr	s0, [r7, #36]	@ 0x24
+    float uDB = wrap360(db_upper_bound);
  8001262:	ed97 0a01 	vldr	s0, [r7, #4]
  8001266:	f7ff fe9b 	bl	8000fa0 <wrap360>
  800126a:	ed87 0a08 	vstr	s0, [r7, #32]
+
+    uint8_t l_hit = arcContains(startAngle, endAngle, dir, lDB);
  800126e:	7bfb      	ldrb	r3, [r7, #15]
  8001270:	ed97 1a09 	vldr	s2, [r7, #36]	@ 0x24
  8001274:	4618      	mov	r0, r3
@@ -1502,6 +1570,7 @@ Disassembly of section .text:
  800127e:	f7ff fef7 	bl	8001070 <arcContains>
  8001282:	4603      	mov	r3, r0
  8001284:	77fb      	strb	r3, [r7, #31]
+    uint8_t u_hit = arcContains(startAngle, endAngle, dir, uDB);
  8001286:	7bfb      	ldrb	r3, [r7, #15]
  8001288:	ed97 1a08 	vldr	s2, [r7, #32]
  800128c:	4618      	mov	r0, r3
@@ -1510,18 +1579,23 @@ Disassembly of section .text:
  8001296:	f7ff feeb 	bl	8001070 <arcContains>
  800129a:	4603      	mov	r3, r0
  800129c:	77bb      	strb	r3, [r7, #30]
+
+    uint8_t start_inside = angleInDeadband(startAngle, lDB, uDB);
  800129e:	ed97 1a08 	vldr	s2, [r7, #32]
  80012a2:	edd7 0a09 	vldr	s1, [r7, #36]	@ 0x24
  80012a6:	ed97 0a05 	vldr	s0, [r7, #20]
  80012aa:	f7ff ff72 	bl	8001192 <angleInDeadband>
  80012ae:	4603      	mov	r3, r0
  80012b0:	777b      	strb	r3, [r7, #29]
+    uint8_t end_inside   = angleInDeadband(endAngle, lDB, uDB);
  80012b2:	ed97 1a08 	vldr	s2, [r7, #32]
  80012b6:	edd7 0a09 	vldr	s1, [r7, #36]	@ 0x24
  80012ba:	ed97 0a04 	vldr	s0, [r7, #16]
  80012be:	f7ff ff68 	bl	8001192 <angleInDeadband>
  80012c2:	4603      	mov	r3, r0
  80012c4:	773b      	strb	r3, [r7, #28]
+
+    return l_hit || u_hit || (start_inside && end_inside);
  80012c6:	7ffb      	ldrb	r3, [r7, #31]
  80012c8:	2b00      	cmp	r3, #0
  80012ca:	d108      	bne.n	80012de <checkDeadband+0xa2>
@@ -1538,6 +1612,7 @@ Disassembly of section .text:
  80012e0:	e000      	b.n	80012e4 <checkDeadband+0xa8>
  80012e2:	2300      	movs	r3, #0
  80012e4:	b2db      	uxtb	r3, r3
+}
  80012e6:	4618      	mov	r0, r3
  80012e8:	3728      	adds	r7, #40	@ 0x28
  80012ea:	46bd      	mov	sp, r7
@@ -1545,6 +1620,12 @@ Disassembly of section .text:
 	...
 
 080012f0 <Stepper_Create>:
+	 uint8_t rpm_smoothening,
+	 uint8_t constraintMode,
+	 float limSwitchOffset,
+	 float db_lower_bound,
+	 float db_upper_bound)
+{
  80012f0:	b580      	push	{r7, lr}
  80012f2:	b088      	sub	sp, #32
  80012f4:	af00      	add	r7, sp, #0
@@ -1555,108 +1636,144 @@ Disassembly of section .text:
  80012fe:	ed87 0a03 	vstr	s0, [r7, #12]
  8001302:	edc7 0a02 	vstr	s1, [r7, #8]
  8001306:	ed87 1a01 	vstr	s2, [r7, #4]
+	if (handle == NULL) return;
  800130a:	69fb      	ldr	r3, [r7, #28]
  800130c:	2b00      	cmp	r3, #0
  800130e:	f000 8084 	beq.w	800141a <Stepper_Create+0x12a>
+
+	handle->step_timer = step_timer;
  8001312:	69fb      	ldr	r3, [r7, #28]
  8001314:	69ba      	ldr	r2, [r7, #24]
  8001316:	601a      	str	r2, [r3, #0]
+	handle->step_channel = step_channel;
  8001318:	69fb      	ldr	r3, [r7, #28]
  800131a:	697a      	ldr	r2, [r7, #20]
  800131c:	605a      	str	r2, [r3, #4]
+	handle->step_dir_port = step_dir_port;
  800131e:	69fb      	ldr	r3, [r7, #28]
  8001320:	693a      	ldr	r2, [r7, #16]
  8001322:	609a      	str	r2, [r3, #8]
+	handle->step_dir_pin = step_dir_pin;
  8001324:	69fb      	ldr	r3, [r7, #28]
  8001326:	8d3a      	ldrh	r2, [r7, #40]	@ 0x28
  8001328:	819a      	strh	r2, [r3, #12]
+	handle->ena_port = ena_port;
  800132a:	69fb      	ldr	r3, [r7, #28]
  800132c:	6afa      	ldr	r2, [r7, #44]	@ 0x2c
  800132e:	611a      	str	r2, [r3, #16]
+	handle->ena_pin = ena_pin;
  8001330:	69fb      	ldr	r3, [r7, #28]
  8001332:	8e3a      	ldrh	r2, [r7, #48]	@ 0x30
  8001334:	829a      	strh	r2, [r3, #20]
+	handle->steps_per_rev = steps_per_rev;
  8001336:	8ebb      	ldrh	r3, [r7, #52]	@ 0x34
  8001338:	ee07 3a90 	vmov	s15, r3
  800133c:	eef8 7a67 	vcvt.f32.u32	s15, s15
  8001340:	69fb      	ldr	r3, [r7, #28]
  8001342:	edc3 7a06 	vstr	s15, [r3, #24]
+	handle->maxRPM = 1500;
  8001346:	69fb      	ldr	r3, [r7, #28]
  8001348:	f240 52dc 	movw	r2, #1500	@ 0x5dc
  800134c:	849a      	strh	r2, [r3, #36]	@ 0x24
+	handle->queueMode = queueMode;
  800134e:	69fb      	ldr	r3, [r7, #28]
  8001350:	f897 2038 	ldrb.w	r2, [r7, #56]	@ 0x38
  8001354:	f883 2026 	strb.w	r2, [r3, #38]	@ 0x26
+	initWQueue(&handle->q);
  8001358:	69fb      	ldr	r3, [r7, #28]
  800135a:	3328      	adds	r3, #40	@ 0x28
  800135c:	4618      	mov	r0, r3
  800135e:	f000 fc4b 	bl	8001bf8 <initWQueue>
+
+	handle->step_counter = 0;
  8001362:	69fb      	ldr	r3, [r7, #28]
  8001364:	2200      	movs	r2, #0
  8001366:	61da      	str	r2, [r3, #28]
+	handle->target_steps = 0;
  8001368:	69fb      	ldr	r3, [r7, #28]
  800136a:	2200      	movs	r2, #0
  800136c:	621a      	str	r2, [r3, #32]
+	handle->isMoving = 0;
  800136e:	69fb      	ldr	r3, [r7, #28]
  8001370:	2200      	movs	r2, #0
  8001372:	f883 2350 	strb.w	r2, [r3, #848]	@ 0x350
+	handle->recievedStepper = 0;
  8001376:	69fb      	ldr	r3, [r7, #28]
  8001378:	2200      	movs	r2, #0
  800137a:	f883 2351 	strb.w	r2, [r3, #849]	@ 0x351
+	handle->dir = 0;
  800137e:	69fb      	ldr	r3, [r7, #28]
  8001380:	2200      	movs	r2, #0
  8001382:	f883 2352 	strb.w	r2, [r3, #850]	@ 0x352
+	handle->lastInstruct.degree = 0.0f;
  8001386:	69fb      	ldr	r3, [r7, #28]
  8001388:	f04f 0200 	mov.w	r2, #0
  800138c:	f8c3 2358 	str.w	r2, [r3, #856]	@ 0x358
+	handle->lastInstruct.rpm = 0;
  8001390:	69fb      	ldr	r3, [r7, #28]
  8001392:	f04f 0200 	mov.w	r2, #0
  8001396:	f8c3 235c 	str.w	r2, [r3, #860]	@ 0x35c
+	handle->step_accum = 0.0f;
  800139a:	69fb      	ldr	r3, [r7, #28]
  800139c:	f04f 0200 	mov.w	r2, #0
  80013a0:	f8c3 2354 	str.w	r2, [r3, #852]	@ 0x354
+	handle->totalPulses = 0;
  80013a4:	69f9      	ldr	r1, [r7, #28]
  80013a6:	f04f 0200 	mov.w	r2, #0
  80013aa:	f04f 0300 	mov.w	r3, #0
  80013ae:	e9c1 23d8 	strd	r2, r3, [r1, #864]	@ 0x360
+	handle->abs_step_count = 0;
  80013b2:	69fb      	ldr	r3, [r7, #28]
  80013b4:	2200      	movs	r2, #0
  80013b6:	f8c3 2368 	str.w	r2, [r3, #872]	@ 0x368
+	handle->absolute_angle_f = 0.0f;
  80013ba:	69fb      	ldr	r3, [r7, #28]
  80013bc:	f04f 0200 	mov.w	r2, #0
  80013c0:	f8c3 236c 	str.w	r2, [r3, #876]	@ 0x36c
+	handle->absolute_angle_b = 180.0f;
  80013c4:	69fb      	ldr	r3, [r7, #28]
  80013c6:	4a17      	ldr	r2, [pc, #92]	@ (8001424 <Stepper_Create+0x134>)
  80013c8:	f8c3 2370 	str.w	r2, [r3, #880]	@ 0x370
+	handle->rpm_smoothening = rpm_smoothening;
  80013cc:	69fb      	ldr	r3, [r7, #28]
  80013ce:	f897 203c 	ldrb.w	r2, [r7, #60]	@ 0x3c
  80013d2:	f883 2374 	strb.w	r2, [r3, #884]	@ 0x374
+	handle->pending_preemption = 0;
  80013d6:	69fb      	ldr	r3, [r7, #28]
  80013d8:	2200      	movs	r2, #0
  80013da:	f883 2375 	strb.w	r2, [r3, #885]	@ 0x375
+	handle->last_burst_size = 0;
  80013de:	69fb      	ldr	r3, [r7, #28]
  80013e0:	2200      	movs	r2, #0
  80013e2:	f8c3 2378 	str.w	r2, [r3, #888]	@ 0x378
+	handle->homing_status = 0;
  80013e6:	69fb      	ldr	r3, [r7, #28]
  80013e8:	2200      	movs	r2, #0
  80013ea:	f883 2381 	strb.w	r2, [r3, #897]	@ 0x381
+	handle->correctOffset = 0;
  80013ee:	69fb      	ldr	r3, [r7, #28]
  80013f0:	2200      	movs	r2, #0
  80013f2:	f883 2380 	strb.w	r2, [r3, #896]	@ 0x380
+	handle->constraintMode = constraintMode;
  80013f6:	69fb      	ldr	r3, [r7, #28]
  80013f8:	f897 2040 	ldrb.w	r2, [r7, #64]	@ 0x40
  80013fc:	f883 238c 	strb.w	r2, [r3, #908]	@ 0x38c
+	handle->limSwitchOffset = limSwitchOffset;
  8001400:	69fb      	ldr	r3, [r7, #28]
  8001402:	68fa      	ldr	r2, [r7, #12]
  8001404:	f8c3 237c 	str.w	r2, [r3, #892]	@ 0x37c
+	handle->db_lower_bound = db_lower_bound;
  8001408:	69fb      	ldr	r3, [r7, #28]
  800140a:	68ba      	ldr	r2, [r7, #8]
  800140c:	f8c3 2384 	str.w	r2, [r3, #900]	@ 0x384
+	handle->db_upper_bound = db_upper_bound;
  8001410:	69fb      	ldr	r3, [r7, #28]
  8001412:	687a      	ldr	r2, [r7, #4]
  8001414:	f8c3 2388 	str.w	r2, [r3, #904]	@ 0x388
  8001418:	e000      	b.n	800141c <Stepper_Create+0x12c>
+	if (handle == NULL) return;
  800141a:	bf00      	nop
+}
  800141c:	3720      	adds	r7, #32
  800141e:	46bd      	mov	sp, r7
  8001420:	bd80      	pop	{r7, pc}
@@ -1664,10 +1781,13 @@ Disassembly of section .text:
  8001424:	43340000 	.word	0x43340000
 
 08001428 <initTimer>:
+
+void initTimer(Stepper_Handle_t* handle){
  8001428:	b580      	push	{r7, lr}
  800142a:	b082      	sub	sp, #8
  800142c:	af00      	add	r7, sp, #0
  800142e:	6078      	str	r0, [r7, #4]
+	__HAL_TIM_DISABLE(handle->step_timer);
  8001430:	687b      	ldr	r3, [r7, #4]
  8001432:	681b      	ldr	r3, [r3, #0]
  8001434:	681b      	ldr	r3, [r3, #0]
@@ -1693,6 +1813,7 @@ Disassembly of section .text:
  8001460:	681b      	ldr	r3, [r3, #0]
  8001462:	f022 0201 	bic.w	r2, r2, #1
  8001466:	601a      	str	r2, [r3, #0]
+	__HAL_TIM_URS_ENABLE(handle->step_timer);
  8001468:	687b      	ldr	r3, [r7, #4]
  800146a:	681b      	ldr	r3, [r3, #0]
  800146c:	681b      	ldr	r3, [r3, #0]
@@ -1702,6 +1823,9 @@ Disassembly of section .text:
  8001474:	681b      	ldr	r3, [r3, #0]
  8001476:	f042 0204 	orr.w	r2, r2, #4
  800147a:	601a      	str	r2, [r3, #0]
+
+	    // Enable CC channel and MOE once, never touch again
+	TIM_CCxChannelCmd(handle->step_timer->Instance, handle->step_channel, TIM_CCx_ENABLE);
  800147c:	687b      	ldr	r3, [r7, #4]
  800147e:	681b      	ldr	r3, [r3, #0]
  8001480:	6818      	ldr	r0, [r3, #0]
@@ -1710,6 +1834,7 @@ Disassembly of section .text:
  8001486:	2201      	movs	r2, #1
  8001488:	4619      	mov	r1, r3
  800148a:	f006 ffcf 	bl	800842c <TIM_CCxChannelCmd>
+	__HAL_TIM_MOE_ENABLE(handle->step_timer);
  800148e:	687b      	ldr	r3, [r7, #4]
  8001490:	681b      	ldr	r3, [r3, #0]
  8001492:	681b      	ldr	r3, [r3, #0]
@@ -1719,6 +1844,9 @@ Disassembly of section .text:
  800149a:	681b      	ldr	r3, [r3, #0]
  800149c:	f442 4200 	orr.w	r2, r2, #32768	@ 0x8000
  80014a0:	645a      	str	r2, [r3, #68]	@ 0x44
+
+	    // Enforce OPM once here while timer is stopped
+	handle->step_timer->Instance->CR1 |= TIM_CR1_OPM;
  80014a2:	687b      	ldr	r3, [r7, #4]
  80014a4:	681b      	ldr	r3, [r3, #0]
  80014a6:	681b      	ldr	r3, [r3, #0]
@@ -1728,6 +1856,7 @@ Disassembly of section .text:
  80014ae:	681b      	ldr	r3, [r3, #0]
  80014b0:	f042 0208 	orr.w	r2, r2, #8
  80014b4:	601a      	str	r2, [r3, #0]
+}
  80014b6:	bf00      	nop
  80014b8:	3708      	adds	r7, #8
  80014ba:	46bd      	mov	sp, r7
@@ -1735,22 +1864,34 @@ Disassembly of section .text:
 	...
 
 080014c0 <Stepper_Stop>:
+
+void Stepper_Stop(Stepper_Handle_t* stepper)
+{
  80014c0:	b580      	push	{r7, lr}
  80014c2:	b084      	sub	sp, #16
  80014c4:	af00      	add	r7, sp, #0
  80014c6:	6078      	str	r0, [r7, #4]
+    if (!stepper)
  80014c8:	687b      	ldr	r3, [r7, #4]
  80014ca:	2b00      	cmp	r3, #0
  80014cc:	d068      	beq.n	80015a0 <Stepper_Stop+0xe0>
+        return;
+
+    TIM_TypeDef *tim = stepper->step_timer->Instance;
  80014ce:	687b      	ldr	r3, [r7, #4]
  80014d0:	681b      	ldr	r3, [r3, #0]
  80014d2:	681b      	ldr	r3, [r3, #0]
  80014d4:	60fb      	str	r3, [r7, #12]
+
+    // If timer is running, stop immediately
+    if (tim->CR1 & TIM_CR1_CEN)
  80014d6:	68fb      	ldr	r3, [r7, #12]
  80014d8:	681b      	ldr	r3, [r3, #0]
  80014da:	f003 0301 	and.w	r3, r3, #1
  80014de:	2b00      	cmp	r3, #0
  80014e0:	d01b      	beq.n	800151a <Stepper_Stop+0x5a>
+    {
+        __HAL_TIM_DISABLE(stepper->step_timer);   // Clear CEN
  80014e2:	687b      	ldr	r3, [r7, #4]
  80014e4:	681b      	ldr	r3, [r3, #0]
  80014e6:	681b      	ldr	r3, [r3, #0]
@@ -1776,6 +1917,10 @@ Disassembly of section .text:
  8001512:	681b      	ldr	r3, [r3, #0]
  8001514:	f022 0201 	bic.w	r2, r2, #1
  8001518:	601a      	str	r2, [r3, #0]
+    }
+
+    // Disable update interrupt
+    __HAL_TIM_DISABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
  800151a:	687b      	ldr	r3, [r7, #4]
  800151c:	681b      	ldr	r3, [r3, #0]
  800151e:	681b      	ldr	r3, [r3, #0]
@@ -1785,19 +1930,28 @@ Disassembly of section .text:
  8001526:	681b      	ldr	r3, [r3, #0]
  8001528:	f022 0201 	bic.w	r2, r2, #1
  800152c:	60da      	str	r2, [r3, #12]
+
+    // Clear pending update flag (important)
+    __HAL_TIM_CLEAR_FLAG(stepper->step_timer, TIM_FLAG_UPDATE);
  800152e:	687b      	ldr	r3, [r7, #4]
  8001530:	681b      	ldr	r3, [r3, #0]
  8001532:	681b      	ldr	r3, [r3, #0]
  8001534:	f06f 0201 	mvn.w	r2, #1
  8001538:	611a      	str	r2, [r3, #16]
+
+    stepper->isMoving = 0;
  800153a:	687b      	ldr	r3, [r7, #4]
  800153c:	2200      	movs	r2, #0
  800153e:	f883 2350 	strb.w	r2, [r3, #848]	@ 0x350
+    stepper->step_timer->Instance->RCR = 0;
  8001542:	687b      	ldr	r3, [r7, #4]
  8001544:	681b      	ldr	r3, [r3, #0]
  8001546:	681b      	ldr	r3, [r3, #0]
  8001548:	2200      	movs	r2, #0
  800154a:	631a      	str	r2, [r3, #48]	@ 0x30
+    stepper->absolute_angle_f =
+        clamp_deg_180_pos(
+            stepper->abs_step_count * 360.0f / stepper->steps_per_rev
  800154c:	687b      	ldr	r3, [r7, #4]
  800154e:	f8d3 3368 	ldr.w	r3, [r3, #872]	@ 0x368
  8001552:	ee07 3a90 	vmov	s15, r3
@@ -1806,12 +1960,16 @@ Disassembly of section .text:
  800155e:	ee27 7a87 	vmul.f32	s14, s15, s14
  8001562:	687b      	ldr	r3, [r7, #4]
  8001564:	edd3 7a06 	vldr	s15, [r3, #24]
+        clamp_deg_180_pos(
  8001568:	eec7 6a27 	vdiv.f32	s13, s14, s15
  800156c:	eeb0 0a66 	vmov.f32	s0, s13
  8001570:	f7ff fcd8 	bl	8000f24 <clamp_deg_180_pos>
  8001574:	eef0 7a40 	vmov.f32	s15, s0
+    stepper->absolute_angle_f =
  8001578:	687b      	ldr	r3, [r7, #4]
  800157a:	edc3 7adb 	vstr	s15, [r3, #876]	@ 0x36c
+        );
+    stepper->absolute_angle_b = clamp_deg_180_pos(stepper->absolute_angle_f + 180);
  800157e:	687b      	ldr	r3, [r7, #4]
  8001580:	edd3 7adb 	vldr	s15, [r3, #876]	@ 0x36c
  8001584:	ed9f 7a09 	vldr	s14, [pc, #36]	@ 80015ac <Stepper_Stop+0xec>
@@ -1822,7 +1980,9 @@ Disassembly of section .text:
  8001598:	687b      	ldr	r3, [r7, #4]
  800159a:	edc3 7adc 	vstr	s15, [r3, #880]	@ 0x370
  800159e:	e000      	b.n	80015a2 <Stepper_Stop+0xe2>
+        return;
  80015a0:	bf00      	nop
+}
  80015a2:	3710      	adds	r7, #16
  80015a4:	46bd      	mov	sp, r7
  80015a6:	bd80      	pop	{r7, pc}
@@ -1830,11 +1990,20 @@ Disassembly of section .text:
  80015ac:	43340000 	.word	0x43340000
 
 080015b0 <setRPM>:
+void toggleQueue(Stepper_Handle_t* stepper){
+	if (stepper->queueMode) stepper->queueMode = 0;
+	else stepper->queueMode = 1;
+}
+
+void setRPM(Stepper_Handle_t* stepper, float rpm){
  80015b0:	b580      	push	{r7, lr}
  80015b2:	b088      	sub	sp, #32
  80015b4:	af00      	add	r7, sp, #0
  80015b6:	6078      	str	r0, [r7, #4]
  80015b8:	ed87 0a00 	vstr	s0, [r7]
+    //__HAL_TIM_SET_COMPARE(stepper->step_timer, stepper->step_channel, 0);
+	//Stepper_Stop(stepper);
+	if (rpm > stepper->maxRPM) rpm = stepper->maxRPM;
  80015bc:	687b      	ldr	r3, [r7, #4]
  80015be:	8c9b      	ldrh	r3, [r3, #36]	@ 0x24
  80015c0:	ee07 3a90 	vmov	s15, r3
@@ -1848,6 +2017,7 @@ Disassembly of section .text:
  80015da:	ee07 3a90 	vmov	s15, r3
  80015de:	eef8 7a67 	vcvt.f32.u32	s15, s15
  80015e2:	edc7 7a00 	vstr	s15, [r7]
+    float pulseFreq = (rpm * stepper->steps_per_rev) / 60.0f;
  80015e6:	687b      	ldr	r3, [r7, #4]
  80015e8:	ed93 7a06 	vldr	s14, [r3, #24]
  80015ec:	edd7 7a00 	vldr	s15, [r7]
@@ -1855,6 +2025,7 @@ Disassembly of section .text:
  80015f4:	eddf 6a4f 	vldr	s13, [pc, #316]	@ 8001734 <setRPM+0x184>
  80015f8:	eec7 7a26 	vdiv.f32	s15, s14, s13
  80015fc:	edc7 7a05 	vstr	s15, [r7, #20]
+    if (rpm <= 0.0f || stepper->steps_per_rev == 0) return;
  8001600:	edd7 7a00 	vldr	s15, [r7]
  8001604:	eef5 7ac0 	vcmpe.f32	s15, #0.0
  8001608:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
@@ -1864,21 +2035,26 @@ Disassembly of section .text:
  8001616:	eef5 7a40 	vcmp.f32	s15, #0.0
  800161a:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
  800161e:	f000 8084 	beq.w	800172a <setRPM+0x17a>
+    uint32_t timer_clk = HAL_RCC_GetPCLK1Freq();
  8001622:	f005 fa3b 	bl	8006a9c <HAL_RCC_GetPCLK1Freq>
  8001626:	61f8      	str	r0, [r7, #28]
+    if ((RCC->CFGR & RCC_CFGR_PPRE1) != RCC_CFGR_PPRE1_DIV1)
  8001628:	4b43      	ldr	r3, [pc, #268]	@ (8001738 <setRPM+0x188>)
  800162a:	689b      	ldr	r3, [r3, #8]
  800162c:	f403 63e0 	and.w	r3, r3, #1792	@ 0x700
  8001630:	2b00      	cmp	r3, #0
  8001632:	d002      	beq.n	800163a <setRPM+0x8a>
+        timer_clk *= 2;
  8001634:	69fb      	ldr	r3, [r7, #28]
  8001636:	005b      	lsls	r3, r3, #1
  8001638:	61fb      	str	r3, [r7, #28]
+    uint32_t psc = stepper->step_timer->Instance->PSC;
  800163a:	687b      	ldr	r3, [r7, #4]
  800163c:	681b      	ldr	r3, [r3, #0]
  800163e:	681b      	ldr	r3, [r3, #0]
  8001640:	6a9b      	ldr	r3, [r3, #40]	@ 0x28
  8001642:	613b      	str	r3, [r7, #16]
+    float arr_f = (timer_clk / ((psc + 1) * pulseFreq)) - 1.0f;
  8001644:	69fb      	ldr	r3, [r7, #28]
  8001646:	ee07 3a90 	vmov	s15, r3
  800164a:	eef8 6a67 	vcvt.f32.u32	s13, s15
@@ -1892,17 +2068,22 @@ Disassembly of section .text:
  8001666:	eeb7 7a00 	vmov.f32	s14, #112	@ 0x3f800000  1.0
  800166a:	ee77 7ac7 	vsub.f32	s15, s15, s14
  800166e:	edc7 7a03 	vstr	s15, [r7, #12]
+
+    uint32_t ARR = (uint32_t)(arr_f + 0.5f);
  8001672:	edd7 7a03 	vldr	s15, [r7, #12]
  8001676:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
  800167a:	ee77 7a87 	vadd.f32	s15, s15, s14
  800167e:	eefc 7ae7 	vcvt.u32.f32	s15, s15
  8001682:	ee17 3a90 	vmov	r3, s15
  8001686:	61bb      	str	r3, [r7, #24]
+
+    if (ARR < 2) ARR = 2; //sanity check to ensure ARR isnt too small
  8001688:	69bb      	ldr	r3, [r7, #24]
  800168a:	2b01      	cmp	r3, #1
  800168c:	d801      	bhi.n	8001692 <setRPM+0xe2>
  800168e:	2302      	movs	r3, #2
  8001690:	61bb      	str	r3, [r7, #24]
+    if ((ARR & 1) == 0) ARR++; // rounding  // force odd if you want perfect 50/50 duty
  8001692:	69bb      	ldr	r3, [r7, #24]
  8001694:	f003 0301 	and.w	r3, r3, #1
  8001698:	2b00      	cmp	r3, #0
@@ -1910,9 +2091,13 @@ Disassembly of section .text:
  800169c:	69bb      	ldr	r3, [r7, #24]
  800169e:	3301      	adds	r3, #1
  80016a0:	61bb      	str	r3, [r7, #24]
+    uint32_t CCR = ARR / 2;
  80016a2:	69bb      	ldr	r3, [r7, #24]
  80016a4:	085b      	lsrs	r3, r3, #1
  80016a6:	60bb      	str	r3, [r7, #8]
+
+
+    __HAL_TIM_SET_AUTORELOAD(stepper->step_timer, ARR);
  80016a8:	687b      	ldr	r3, [r7, #4]
  80016aa:	681b      	ldr	r3, [r3, #0]
  80016ac:	681b      	ldr	r3, [r3, #0]
@@ -1922,6 +2107,7 @@ Disassembly of section .text:
  80016b4:	681b      	ldr	r3, [r3, #0]
  80016b6:	69ba      	ldr	r2, [r7, #24]
  80016b8:	60da      	str	r2, [r3, #12]
+    __HAL_TIM_SET_COMPARE(stepper->step_timer, stepper->step_channel, CCR);
  80016ba:	687b      	ldr	r3, [r7, #4]
  80016bc:	685b      	ldr	r3, [r3, #4]
  80016be:	2b00      	cmp	r3, #0
@@ -1978,7 +2164,11 @@ Disassembly of section .text:
  8001724:	68bb      	ldr	r3, [r7, #8]
  8001726:	64d3      	str	r3, [r2, #76]	@ 0x4c
  8001728:	e000      	b.n	800172c <setRPM+0x17c>
+    if (rpm <= 0.0f || stepper->steps_per_rev == 0) return;
  800172a:	bf00      	nop
+
+    //stepper->step_timer->Instance->EGR = TIM_EGR_UG;
+}
  800172c:	3720      	adds	r7, #32
  800172e:	46bd      	mov	sp, r7
  8001730:	bd80      	pop	{r7, pc}
@@ -1987,28 +2177,40 @@ Disassembly of section .text:
  8001738:	40021000 	.word	0x40021000
 
 0800173c <sendPulses>:
+
+void sendPulses(Stepper_Handle_t* stepper, uint32_t pulses, float rpm)
+{
  800173c:	b580      	push	{r7, lr}
  800173e:	b086      	sub	sp, #24
  8001740:	af00      	add	r7, sp, #0
  8001742:	60f8      	str	r0, [r7, #12]
  8001744:	60b9      	str	r1, [r7, #8]
  8001746:	ed87 0a01 	vstr	s0, [r7, #4]
+    if (!stepper || pulses == 0) {
  800174a:	68fb      	ldr	r3, [r7, #12]
  800174c:	2b00      	cmp	r3, #0
  800174e:	d002      	beq.n	8001756 <sendPulses+0x1a>
  8001750:	68bb      	ldr	r3, [r7, #8]
  8001752:	2b00      	cmp	r3, #0
  8001754:	d106      	bne.n	8001764 <sendPulses+0x28>
+        if (stepper) Stepper_Stop(stepper);
  8001756:	68fb      	ldr	r3, [r7, #12]
  8001758:	2b00      	cmp	r3, #0
  800175a:	d074      	beq.n	8001846 <sendPulses+0x10a>
  800175c:	68f8      	ldr	r0, [r7, #12]
  800175e:	f7ff feaf 	bl	80014c0 <Stepper_Stop>
+        return;
  8001762:	e070      	b.n	8001846 <sendPulses+0x10a>
+    }
+
+    TIM_TypeDef *tim = stepper->step_timer->Instance;
  8001764:	68fb      	ldr	r3, [r7, #12]
  8001766:	681b      	ldr	r3, [r3, #0]
  8001768:	681b      	ldr	r3, [r3, #0]
  800176a:	617b      	str	r3, [r7, #20]
+
+    // 1. Hard stop - timer must be off before touching RCR/ARR
+    __HAL_TIM_DISABLE(stepper->step_timer);
  800176c:	68fb      	ldr	r3, [r7, #12]
  800176e:	681b      	ldr	r3, [r3, #0]
  8001770:	681b      	ldr	r3, [r3, #0]
@@ -2034,6 +2236,7 @@ Disassembly of section .text:
  800179c:	681b      	ldr	r3, [r3, #0]
  800179e:	f022 0201 	bic.w	r2, r2, #1
  80017a2:	601a      	str	r2, [r3, #0]
+    __HAL_TIM_DISABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
  80017a4:	68fb      	ldr	r3, [r7, #12]
  80017a6:	681b      	ldr	r3, [r3, #0]
  80017a8:	681b      	ldr	r3, [r3, #0]
@@ -2043,11 +2246,15 @@ Disassembly of section .text:
  80017b0:	681b      	ldr	r3, [r3, #0]
  80017b2:	f022 0201 	bic.w	r2, r2, #1
  80017b6:	60da      	str	r2, [r3, #12]
+    __HAL_TIM_CLEAR_FLAG(stepper->step_timer, TIM_FLAG_UPDATE);
  80017b8:	68fb      	ldr	r3, [r7, #12]
  80017ba:	681b      	ldr	r3, [r3, #0]
  80017bc:	681b      	ldr	r3, [r3, #0]
  80017be:	f06f 0201 	mvn.w	r2, #1
  80017c2:	611a      	str	r2, [r3, #16]
+
+    // 2. Set RPM (writes ARR/CCR preloads while timer is stopped - safe)
+    if (rpm > 0.0f) setRPM(stepper, rpm);
  80017c4:	edd7 7a01 	vldr	s15, [r7, #4]
  80017c8:	eef5 7ac0 	vcmpe.f32	s15, #0.0
  80017cc:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
@@ -2055,35 +2262,55 @@ Disassembly of section .text:
  80017d2:	ed97 0a01 	vldr	s0, [r7, #4]
  80017d6:	68f8      	ldr	r0, [r7, #12]
  80017d8:	f7ff feea 	bl	80015b0 <setRPM>
+
+    // 3. Set up burst
+    stepper->target_steps   = pulses;
  80017dc:	68fb      	ldr	r3, [r7, #12]
  80017de:	68ba      	ldr	r2, [r7, #8]
  80017e0:	621a      	str	r2, [r3, #32]
+    stepper->isMoving       = 1;
  80017e2:	68fb      	ldr	r3, [r7, #12]
  80017e4:	2201      	movs	r2, #1
  80017e6:	f883 2350 	strb.w	r2, [r3, #848]	@ 0x350
+
+    uint32_t chunk = (pulses < BURST_SIZE) ? pulses : BURST_SIZE;
  80017ea:	68bb      	ldr	r3, [r7, #8]
  80017ec:	2b19      	cmp	r3, #25
  80017ee:	bf28      	it	cs
  80017f0:	2319      	movcs	r3, #25
  80017f2:	613b      	str	r3, [r7, #16]
+    stepper->last_burst_size = chunk;
  80017f4:	68fb      	ldr	r3, [r7, #12]
  80017f6:	693a      	ldr	r2, [r7, #16]
  80017f8:	f8c3 2378 	str.w	r2, [r3, #888]	@ 0x378
+
+    tim->RCR = chunk - 1;
  80017fc:	693b      	ldr	r3, [r7, #16]
  80017fe:	1e5a      	subs	r2, r3, #1
  8001800:	697b      	ldr	r3, [r7, #20]
  8001802:	631a      	str	r2, [r3, #48]	@ 0x30
+    tim->CNT = 0;
  8001804:	697b      	ldr	r3, [r7, #20]
  8001806:	2200      	movs	r2, #0
  8001808:	625a      	str	r2, [r3, #36]	@ 0x24
+
+    // 4. Generate update event to push preloads (ARR, CCR, RCR) into shadows
+    tim->EGR = TIM_EGR_UG;
  800180a:	697b      	ldr	r3, [r7, #20]
  800180c:	2201      	movs	r2, #1
  800180e:	615a      	str	r2, [r3, #20]
+
+    // 5. MUST clear UIF immediately - EGR_UG sets it even with URS=1
+    //    on advanced timers when the timer is stopped
+    __HAL_TIM_CLEAR_FLAG(stepper->step_timer, TIM_FLAG_UPDATE);
  8001810:	68fb      	ldr	r3, [r7, #12]
  8001812:	681b      	ldr	r3, [r3, #0]
  8001814:	681b      	ldr	r3, [r3, #0]
  8001816:	f06f 0201 	mvn.w	r2, #1
  800181a:	611a      	str	r2, [r3, #16]
+
+    // 6. Now safe to enable IT and start
+    __HAL_TIM_ENABLE_IT(stepper->step_timer, TIM_IT_UPDATE);
  800181c:	68fb      	ldr	r3, [r7, #12]
  800181e:	681b      	ldr	r3, [r3, #0]
  8001820:	681b      	ldr	r3, [r3, #0]
@@ -2093,6 +2320,7 @@ Disassembly of section .text:
  8001828:	681b      	ldr	r3, [r3, #0]
  800182a:	f042 0201 	orr.w	r2, r2, #1
  800182e:	60da      	str	r2, [r3, #12]
+    __HAL_TIM_ENABLE(stepper->step_timer);
  8001830:	68fb      	ldr	r3, [r7, #12]
  8001832:	681b      	ldr	r3, [r3, #0]
  8001834:	681b      	ldr	r3, [r3, #0]
@@ -2103,23 +2331,31 @@ Disassembly of section .text:
  800183e:	f042 0201 	orr.w	r2, r2, #1
  8001842:	601a      	str	r2, [r3, #0]
  8001844:	e000      	b.n	8001848 <sendPulses+0x10c>
+        return;
  8001846:	bf00      	nop
+}
  8001848:	3718      	adds	r7, #24
  800184a:	46bd      	mov	sp, r7
  800184c:	bd80      	pop	{r7, pc}
 	...
 
 08001850 <moveAngle>:
+
+
+
+void moveAngle(Stepper_Handle_t* stepper, float degree, float rpm){
  8001850:	b580      	push	{r7, lr}
  8001852:	b086      	sub	sp, #24
  8001854:	af00      	add	r7, sp, #0
  8001856:	60f8      	str	r0, [r7, #12]
  8001858:	ed87 0a02 	vstr	s0, [r7, #8]
  800185c:	edc7 0a01 	vstr	s1, [r7, #4]
+	if (degree >=0) {
  8001860:	edd7 7a02 	vldr	s15, [r7, #8]
  8001864:	eef5 7ac0 	vcmpe.f32	s15, #0.0
  8001868:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
  800186c:	db0c      	blt.n	8001888 <moveAngle+0x38>
+		HAL_GPIO_WritePin(stepper->step_dir_port, stepper->step_dir_pin, GPIO_PIN_RESET);
  800186e:	68fb      	ldr	r3, [r7, #12]
  8001870:	6898      	ldr	r0, [r3, #8]
  8001872:	68fb      	ldr	r3, [r7, #12]
@@ -2127,10 +2363,14 @@ Disassembly of section .text:
  8001876:	2200      	movs	r2, #0
  8001878:	4619      	mov	r1, r3
  800187a:	f004 fb6f 	bl	8005f5c <HAL_GPIO_WritePin>
+		stepper->dir = 1;
  800187e:	68fb      	ldr	r3, [r7, #12]
  8001880:	2201      	movs	r2, #1
  8001882:	f883 2352 	strb.w	r2, [r3, #850]	@ 0x352
  8001886:	e00b      	b.n	80018a0 <moveAngle+0x50>
+	}
+	else{
+		HAL_GPIO_WritePin(stepper->step_dir_port, stepper->step_dir_pin, GPIO_PIN_SET);
  8001888:	68fb      	ldr	r3, [r7, #12]
  800188a:	6898      	ldr	r0, [r3, #8]
  800188c:	68fb      	ldr	r3, [r7, #12]
@@ -2138,11 +2378,15 @@ Disassembly of section .text:
  8001890:	2201      	movs	r2, #1
  8001892:	4619      	mov	r1, r3
  8001894:	f004 fb62 	bl	8005f5c <HAL_GPIO_WritePin>
+		stepper->dir = -1;
  8001898:	68fb      	ldr	r3, [r7, #12]
  800189a:	22ff      	movs	r2, #255	@ 0xff
  800189c:	f883 2352 	strb.w	r2, [r3, #850]	@ 0x352
+	}
+	delay_us(5);
  80018a0:	2005      	movs	r0, #5
  80018a2:	f000 fd81 	bl	80023a8 <delay_us>
+	float signed_fpulses = (degree / 360.0f) * stepper->steps_per_rev;
  80018a6:	edd7 7a02 	vldr	s15, [r7, #8]
  80018aa:	eddf 6a27 	vldr	s13, [pc, #156]	@ 8001948 <moveAngle+0xf8>
  80018ae:	ee87 7aa6 	vdiv.f32	s14, s15, s13
@@ -2150,14 +2394,18 @@ Disassembly of section .text:
  80018b4:	edd3 7a06 	vldr	s15, [r3, #24]
  80018b8:	ee67 7a27 	vmul.f32	s15, s14, s15
  80018bc:	edc7 7a04 	vstr	s15, [r7, #16]
+	stepper->step_accum += signed_fpulses;
  80018c0:	68fb      	ldr	r3, [r7, #12]
  80018c2:	ed93 7ad5 	vldr	s14, [r3, #852]	@ 0x354
  80018c6:	edd7 7a04 	vldr	s15, [r7, #16]
  80018ca:	ee77 7a27 	vadd.f32	s15, s14, s15
  80018ce:	68fb      	ldr	r3, [r7, #12]
  80018d0:	edc3 7ad5 	vstr	s15, [r3, #852]	@ 0x354
+
+	int32_t pulses = (int32_t)(stepper->step_accum +
  80018d4:	68fb      	ldr	r3, [r7, #12]
  80018d6:	edd3 7ad5 	vldr	s15, [r3, #852]	@ 0x354
+	                 (stepper->step_accum >= 0 ? 0.5f : -0.5f)); // round, don't truncate
  80018da:	68fb      	ldr	r3, [r7, #12]
  80018dc:	ed93 7ad5 	vldr	s14, [r3, #852]	@ 0x354
  80018e0:	eeb5 7ac0 	vcmpe.f32	s14, #0.0
@@ -2166,10 +2414,12 @@ Disassembly of section .text:
  80018ea:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
  80018ee:	e001      	b.n	80018f4 <moveAngle+0xa4>
  80018f0:	eebe 7a00 	vmov.f32	s14, #224	@ 0xbf000000 -0.5
+	int32_t pulses = (int32_t)(stepper->step_accum +
  80018f4:	ee77 7a27 	vadd.f32	s15, s14, s15
  80018f8:	eefd 7ae7 	vcvt.s32.f32	s15, s15
  80018fc:	ee17 3a90 	vmov	r3, s15
  8001900:	617b      	str	r3, [r7, #20]
+	stepper->step_accum -= pulses;
  8001902:	68fb      	ldr	r3, [r7, #12]
  8001904:	ed93 7ad5 	vldr	s14, [r3, #852]	@ 0x354
  8001908:	697b      	ldr	r3, [r7, #20]
@@ -2178,22 +2428,32 @@ Disassembly of section .text:
  8001912:	ee77 7a67 	vsub.f32	s15, s14, s15
  8001916:	68fb      	ldr	r3, [r7, #12]
  8001918:	edc3 7ad5 	vstr	s15, [r3, #852]	@ 0x354
+
+	if (pulses < 0) {
  800191c:	697b      	ldr	r3, [r7, #20]
  800191e:	2b00      	cmp	r3, #0
  8001920:	da02      	bge.n	8001928 <moveAngle+0xd8>
+	    pulses = -pulses;
  8001922:	697b      	ldr	r3, [r7, #20]
  8001924:	425b      	negs	r3, r3
  8001926:	617b      	str	r3, [r7, #20]
+	}
+
+	if (pulses < 1) return;
  8001928:	697b      	ldr	r3, [r7, #20]
  800192a:	2b00      	cmp	r3, #0
  800192c:	dd07      	ble.n	800193e <moveAngle+0xee>
+
+	sendPulses(stepper, pulses, rpm);
  800192e:	697b      	ldr	r3, [r7, #20]
  8001930:	ed97 0a01 	vldr	s0, [r7, #4]
  8001934:	4619      	mov	r1, r3
  8001936:	68f8      	ldr	r0, [r7, #12]
  8001938:	f7ff ff00 	bl	800173c <sendPulses>
  800193c:	e000      	b.n	8001940 <moveAngle+0xf0>
+	if (pulses < 1) return;
  800193e:	bf00      	nop
+}
  8001940:	3718      	adds	r7, #24
  8001942:	46bd      	mov	sp, r7
  8001944:	bd80      	pop	{r7, pc}
@@ -2201,6 +2461,8 @@ Disassembly of section .text:
  8001948:	43b40000 	.word	0x43b40000
 
 0800194c <moveAngleAbsolute>:
+
+void moveAngleAbsolute(Stepper_Handle_t* stepper, float absolute_angle, float rpm, Motor_Handle_t* bdc){
  800194c:	b580      	push	{r7, lr}
  800194e:	b08e      	sub	sp, #56	@ 0x38
  8001950:	af00      	add	r7, sp, #0
@@ -2208,9 +2470,11 @@ Disassembly of section .text:
  8001954:	ed87 0a02 	vstr	s0, [r7, #8]
  8001958:	edc7 0a01 	vstr	s1, [r7, #4]
  800195c:	6039      	str	r1, [r7, #0]
+	uint8_t mode = bdc->mode;
  800195e:	683b      	ldr	r3, [r7, #0]
  8001960:	7b9b      	ldrb	r3, [r3, #14]
  8001962:	f887 3037 	strb.w	r3, [r7, #55]	@ 0x37
+	float targetAngle_360 = fmodf(absolute_angle + 360.0f, 360.0f);
  8001966:	edd7 7a02 	vldr	s15, [r7, #8]
  800196a:	ed9f 7a9e 	vldr	s14, [pc, #632]	@ 8001be4 <moveAngleAbsolute+0x298>
  800196e:	ee77 7a87 	vadd.f32	s15, s15, s14
@@ -2218,6 +2482,7 @@ Disassembly of section .text:
  8001976:	eeb0 0a67 	vmov.f32	s0, s15
  800197a:	f00b f8d1 	bl	800cb20 <fmodf>
  800197e:	ed87 0a0b 	vstr	s0, [r7, #44]	@ 0x2c
+	float currAngle_360   = fmodf(mode ? stepper->absolute_angle_f + 360.0f : stepper->absolute_angle_b + 360.0f, 360.0f); //conversion to 360
  8001982:	f897 3037 	ldrb.w	r3, [r7, #55]	@ 0x37
  8001986:	2b00      	cmp	r3, #0
  8001988:	d007      	beq.n	800199a <moveAngleAbsolute+0x4e>
@@ -2234,10 +2499,13 @@ Disassembly of section .text:
  80019ac:	eeb0 0a67 	vmov.f32	s0, s15
  80019b0:	f00b f8b6 	bl	800cb20 <fmodf>
  80019b4:	ed87 0a0a 	vstr	s0, [r7, #40]	@ 0x28
+
+	float delta = calcAngularDiff(targetAngle_360, currAngle_360);
  80019b8:	edd7 0a0a 	vldr	s1, [r7, #40]	@ 0x28
  80019bc:	ed97 0a0b 	vldr	s0, [r7, #44]	@ 0x2c
  80019c0:	f7ff fb14 	bl	8000fec <calcAngularDiff>
  80019c4:	ed87 0a0c 	vstr	s0, [r7, #48]	@ 0x30
+	if (fabs(delta) < (float) 360.0f/stepper->steps_per_rev) return; //if movement is lesser than motor resolution can handle, just skip
  80019c8:	edd7 7a0c 	vldr	s15, [r7, #48]	@ 0x30
  80019cc:	eeb0 7ae7 	vabs.f32	s14, s15
  80019d0:	68fb      	ldr	r3, [r7, #12]
@@ -2247,13 +2515,19 @@ Disassembly of section .text:
  80019de:	eeb4 7ae7 	vcmpe.f32	s14, s15
  80019e2:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
  80019e6:	f100 80f7 	bmi.w	8001bd8 <moveAngleAbsolute+0x28c>
+
+
+
+	if (stepper->constraintMode){
  80019ea:	68fb      	ldr	r3, [r7, #12]
  80019ec:	f893 338c 	ldrb.w	r3, [r3, #908]	@ 0x38c
  80019f0:	2b00      	cmp	r3, #0
  80019f2:	f000 80c1 	beq.w	8001b78 <moveAngleAbsolute+0x22c>
+		uint8_t modeA = bdc->mode;
  80019f6:	683b      	ldr	r3, [r7, #0]
  80019f8:	7b9b      	ldrb	r3, [r3, #14]
  80019fa:	f887 3027 	strb.w	r3, [r7, #39]	@ 0x27
+		uint8_t modeB = !modeA;
  80019fe:	f897 3027 	ldrb.w	r3, [r7, #39]	@ 0x27
  8001a02:	2b00      	cmp	r3, #0
  8001a04:	bf0c      	ite	eq
@@ -2261,8 +2535,10 @@ Disassembly of section .text:
  8001a08:	2300      	movne	r3, #0
  8001a0a:	b2db      	uxtb	r3, r3
  8001a0c:	f887 3026 	strb.w	r3, [r7, #38]	@ 0x26
+		float startAngleA = currAngle_360;
  8001a10:	6abb      	ldr	r3, [r7, #40]	@ 0x28
  8001a12:	623b      	str	r3, [r7, #32]
+		float startAngleB = fmodf(currAngle_360 + 180.0f, 360.0f);
  8001a14:	edd7 7a0a 	vldr	s15, [r7, #40]	@ 0x28
  8001a18:	ed9f 7a73 	vldr	s14, [pc, #460]	@ 8001be8 <moveAngleAbsolute+0x29c>
  8001a1c:	ee77 7a87 	vadd.f32	s15, s15, s14
@@ -2270,14 +2546,17 @@ Disassembly of section .text:
  8001a24:	eeb0 0a67 	vmov.f32	s0, s15
  8001a28:	f00b f87a 	bl	800cb20 <fmodf>
  8001a2c:	ed87 0a07 	vstr	s0, [r7, #28]
+		float deltaA = calcAngularDiff(targetAngle_360, startAngleA);
  8001a30:	edd7 0a08 	vldr	s1, [r7, #32]
  8001a34:	ed97 0a0b 	vldr	s0, [r7, #44]	@ 0x2c
  8001a38:	f7ff fad8 	bl	8000fec <calcAngularDiff>
  8001a3c:	ed87 0a06 	vstr	s0, [r7, #24]
+		float deltaB = calcAngularDiff(targetAngle_360, startAngleB);
  8001a40:	edd7 0a07 	vldr	s1, [r7, #28]
  8001a44:	ed97 0a0b 	vldr	s0, [r7, #44]	@ 0x2c
  8001a48:	f7ff fad0 	bl	8000fec <calcAngularDiff>
  8001a4c:	ed87 0a05 	vstr	s0, [r7, #20]
+		uint8_t deadA = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaA, deltaA > 0, stepper->db_lower_bound, stepper->db_upper_bound);
  8001a50:	68fb      	ldr	r3, [r7, #12]
  8001a52:	edd3 6adb 	vldr	s13, [r3, #876]	@ 0x36c
  8001a56:	68fb      	ldr	r3, [r7, #12]
@@ -2304,6 +2583,7 @@ Disassembly of section .text:
  8001a98:	f7ff fbd0 	bl	800123c <checkDeadband>
  8001a9c:	4603      	mov	r3, r0
  8001a9e:	74fb      	strb	r3, [r7, #19]
+		uint8_t deadB = checkDeadband(stepper->absolute_angle_f, stepper->absolute_angle_f + deltaB, deltaB > 0, stepper->db_lower_bound, stepper->db_upper_bound);
  8001aa0:	68fb      	ldr	r3, [r7, #12]
  8001aa2:	edd3 6adb 	vldr	s13, [r3, #876]	@ 0x36c
  8001aa6:	68fb      	ldr	r3, [r7, #12]
@@ -2330,29 +2610,42 @@ Disassembly of section .text:
  8001ae8:	f7ff fba8 	bl	800123c <checkDeadband>
  8001aec:	4603      	mov	r3, r0
  8001aee:	74bb      	strb	r3, [r7, #18]
+		if(deadA){
  8001af0:	7cfb      	ldrb	r3, [r7, #19]
  8001af2:	2b00      	cmp	r3, #0
  8001af4:	d00b      	beq.n	8001b0e <moveAngleAbsolute+0x1c2>
+			if(deadB) return; //hope it never hits this
  8001af6:	7cbb      	ldrb	r3, [r7, #18]
  8001af8:	2b00      	cmp	r3, #0
  8001afa:	d16f      	bne.n	8001bdc <moveAngleAbsolute+0x290>
+			delta = deltaB;
  8001afc:	697b      	ldr	r3, [r7, #20]
  8001afe:	633b      	str	r3, [r7, #48]	@ 0x30
+			mode = modeB;
  8001b00:	f897 3026 	ldrb.w	r3, [r7, #38]	@ 0x26
  8001b04:	f887 3037 	strb.w	r3, [r7, #55]	@ 0x37
+			currAngle_360 = startAngleB;
  8001b08:	69fb      	ldr	r3, [r7, #28]
  8001b0a:	62bb      	str	r3, [r7, #40]	@ 0x28
  8001b0c:	e034      	b.n	8001b78 <moveAngleAbsolute+0x22c>
+		}
+		else if (deadB){
  8001b0e:	7cbb      	ldrb	r3, [r7, #18]
  8001b10:	2b00      	cmp	r3, #0
  8001b12:	d008      	beq.n	8001b26 <moveAngleAbsolute+0x1da>
+			delta = deltaA;
  8001b14:	69bb      	ldr	r3, [r7, #24]
  8001b16:	633b      	str	r3, [r7, #48]	@ 0x30
+			mode = modeA;
  8001b18:	f897 3027 	ldrb.w	r3, [r7, #39]	@ 0x27
  8001b1c:	f887 3037 	strb.w	r3, [r7, #55]	@ 0x37
+			currAngle_360 = startAngleA;
  8001b20:	6a3b      	ldr	r3, [r7, #32]
  8001b22:	62bb      	str	r3, [r7, #40]	@ 0x28
  8001b24:	e028      	b.n	8001b78 <moveAngleAbsolute+0x22c>
+		}
+		else{
+			uint8_t selectionCond = (fabs(deltaA) < fabs(deltaB));
  8001b26:	edd7 7a06 	vldr	s15, [r7, #24]
  8001b2a:	eeb0 7ae7 	vabs.f32	s14, s15
  8001b2e:	edd7 7a05 	vldr	s15, [r7, #20]
@@ -2364,6 +2657,7 @@ Disassembly of section .text:
  8001b42:	2300      	movpl	r3, #0
  8001b44:	b2db      	uxtb	r3, r3
  8001b46:	747b      	strb	r3, [r7, #17]
+			delta = selectionCond ? deltaA : deltaB;
  8001b48:	7c7b      	ldrb	r3, [r7, #17]
  8001b4a:	2b00      	cmp	r3, #0
  8001b4c:	d001      	beq.n	8001b52 <moveAngleAbsolute+0x206>
@@ -2371,6 +2665,7 @@ Disassembly of section .text:
  8001b50:	e000      	b.n	8001b54 <moveAngleAbsolute+0x208>
  8001b52:	697b      	ldr	r3, [r7, #20]
  8001b54:	633b      	str	r3, [r7, #48]	@ 0x30
+			mode = selectionCond ? modeA : modeB;
  8001b56:	7c7b      	ldrb	r3, [r7, #17]
  8001b58:	2b00      	cmp	r3, #0
  8001b5a:	d002      	beq.n	8001b62 <moveAngleAbsolute+0x216>
@@ -2378,6 +2673,7 @@ Disassembly of section .text:
  8001b60:	e001      	b.n	8001b66 <moveAngleAbsolute+0x21a>
  8001b62:	f897 3026 	ldrb.w	r3, [r7, #38]	@ 0x26
  8001b66:	f887 3037 	strb.w	r3, [r7, #55]	@ 0x37
+			currAngle_360 = selectionCond ? startAngleA : startAngleB;
  8001b6a:	7c7b      	ldrb	r3, [r7, #17]
  8001b6c:	2b00      	cmp	r3, #0
  8001b6e:	d001      	beq.n	8001b74 <moveAngleAbsolute+0x228>
@@ -2385,10 +2681,16 @@ Disassembly of section .text:
  8001b72:	e000      	b.n	8001b76 <moveAngleAbsolute+0x22a>
  8001b74:	69fb      	ldr	r3, [r7, #28]
  8001b76:	62bb      	str	r3, [r7, #40]	@ 0x28
+		}
+
+	}
+
+	if (stepper->rpm_smoothening){
  8001b78:	68fb      	ldr	r3, [r7, #12]
  8001b7a:	f893 3374 	ldrb.w	r3, [r3, #884]	@ 0x374
  8001b7e:	2b00      	cmp	r3, #0
  8001b80:	d01e      	beq.n	8001bc0 <moveAngleAbsolute+0x274>
+		rpm = 100*tanhf(fabs(0.008f*delta));
  8001b82:	edd7 7a0c 	vldr	s15, [r7, #48]	@ 0x30
  8001b86:	ed9f 7a19 	vldr	s14, [pc, #100]	@ 8001bec <moveAngleAbsolute+0x2a0>
  8001b8a:	ee67 7a87 	vmul.f32	s15, s15, s14
@@ -2399,6 +2701,7 @@ Disassembly of section .text:
  8001b9e:	ed9f 7a14 	vldr	s14, [pc, #80]	@ 8001bf0 <moveAngleAbsolute+0x2a4>
  8001ba2:	ee67 7a87 	vmul.f32	s15, s15, s14
  8001ba6:	edc7 7a01 	vstr	s15, [r7, #4]
+		if (rpm < 3) rpm = 3;
  8001baa:	edd7 7a01 	vldr	s15, [r7, #4]
  8001bae:	eeb0 7a08 	vmov.f32	s14, #8	@ 0x40400000  3.0
  8001bb2:	eef4 7ac7 	vcmpe.f32	s15, s14
@@ -2406,17 +2709,27 @@ Disassembly of section .text:
  8001bba:	d501      	bpl.n	8001bc0 <moveAngleAbsolute+0x274>
  8001bbc:	4b0d      	ldr	r3, [pc, #52]	@ (8001bf4 <moveAngleAbsolute+0x2a8>)
  8001bbe:	607b      	str	r3, [r7, #4]
+//	{
+//	    // reject move
+//	    return;
+//	}
+
+	bdc->mode = mode;
  8001bc0:	683b      	ldr	r3, [r7, #0]
  8001bc2:	f897 2037 	ldrb.w	r2, [r7, #55]	@ 0x37
  8001bc6:	739a      	strb	r2, [r3, #14]
+	moveAngle(stepper, delta, rpm);
  8001bc8:	edd7 0a01 	vldr	s1, [r7, #4]
  8001bcc:	ed97 0a0c 	vldr	s0, [r7, #48]	@ 0x30
  8001bd0:	68f8      	ldr	r0, [r7, #12]
  8001bd2:	f7ff fe3d 	bl	8001850 <moveAngle>
  8001bd6:	e002      	b.n	8001bde <moveAngleAbsolute+0x292>
+	if (fabs(delta) < (float) 360.0f/stepper->steps_per_rev) return; //if movement is lesser than motor resolution can handle, just skip
  8001bd8:	bf00      	nop
  8001bda:	e000      	b.n	8001bde <moveAngleAbsolute+0x292>
+			if(deadB) return; //hope it never hits this
  8001bdc:	bf00      	nop
+}
  8001bde:	3738      	adds	r7, #56	@ 0x38
  8001be0:	46bd      	mov	sp, r7
  8001be2:	bd80      	pop	{r7, pc}
@@ -2427,25 +2740,36 @@ Disassembly of section .text:
  8001bf4:	40400000 	.word	0x40400000
 
 08001bf8 <initWQueue>:
+
+void Stepper_Disable(Stepper_Handle_t* handle){	// active high
+	HAL_GPIO_WritePin(handle->ena_port, handle->ena_pin, GPIO_PIN_SET);
+}
+
+void initWQueue(WQueue* q){
  8001bf8:	b480      	push	{r7}
  8001bfa:	b085      	sub	sp, #20
  8001bfc:	af00      	add	r7, sp, #0
  8001bfe:	6078      	str	r0, [r7, #4]
+	q->head = -1;
  8001c00:	687b      	ldr	r3, [r7, #4]
  8001c02:	f04f 32ff 	mov.w	r2, #4294967295
  8001c06:	f8c3 2320 	str.w	r2, [r3, #800]	@ 0x320
+	q->tail = -1;
  8001c0a:	687b      	ldr	r3, [r7, #4]
  8001c0c:	f04f 32ff 	mov.w	r2, #4294967295
  8001c10:	f8c3 2324 	str.w	r2, [r3, #804]	@ 0x324
+	for(int i = 0; i < 100; i++){
  8001c14:	2300      	movs	r3, #0
  8001c16:	60fb      	str	r3, [r7, #12]
  8001c18:	e011      	b.n	8001c3e <initWQueue+0x46>
+		q->queue[i].degree = 0;
  8001c1a:	687a      	ldr	r2, [r7, #4]
  8001c1c:	68fb      	ldr	r3, [r7, #12]
  8001c1e:	00db      	lsls	r3, r3, #3
  8001c20:	4413      	add	r3, r2
  8001c22:	f04f 0200 	mov.w	r2, #0
  8001c26:	601a      	str	r2, [r3, #0]
+		q->queue[i].rpm = 0;
  8001c28:	687a      	ldr	r2, [r7, #4]
  8001c2a:	68fb      	ldr	r3, [r7, #12]
  8001c2c:	00db      	lsls	r3, r3, #3
@@ -2453,12 +2777,15 @@ Disassembly of section .text:
  8001c30:	3304      	adds	r3, #4
  8001c32:	f04f 0200 	mov.w	r2, #0
  8001c36:	601a      	str	r2, [r3, #0]
+	for(int i = 0; i < 100; i++){
  8001c38:	68fb      	ldr	r3, [r7, #12]
  8001c3a:	3301      	adds	r3, #1
  8001c3c:	60fb      	str	r3, [r7, #12]
  8001c3e:	68fb      	ldr	r3, [r7, #12]
  8001c40:	2b63      	cmp	r3, #99	@ 0x63
  8001c42:	ddea      	ble.n	8001c1a <initWQueue+0x22>
+	}
+}
  8001c44:	bf00      	nop
  8001c46:	bf00      	nop
  8001c48:	3714      	adds	r7, #20
@@ -2468,6 +2795,8 @@ Disassembly of section .text:
 	...
 
 08001c54 <enqueueW>:
+
+void enqueueW(WQueue* q, Wrapper elem){
  8001c54:	b480      	push	{r7}
  8001c56:	b085      	sub	sp, #20
  8001c58:	af00      	add	r7, sp, #0
@@ -2476,16 +2805,20 @@ Disassembly of section .text:
  8001c60:	eef0 7a60 	vmov.f32	s15, s1
  8001c64:	ed87 7a01 	vstr	s14, [r7, #4]
  8001c68:	edc7 7a02 	vstr	s15, [r7, #8]
+	if (q->head == -1){
  8001c6c:	68fb      	ldr	r3, [r7, #12]
  8001c6e:	f8d3 3320 	ldr.w	r3, [r3, #800]	@ 0x320
  8001c72:	f1b3 3fff 	cmp.w	r3, #4294967295
  8001c76:	d113      	bne.n	8001ca0 <enqueueW+0x4c>
+		q->head = 0;
  8001c78:	68fb      	ldr	r3, [r7, #12]
  8001c7a:	2200      	movs	r2, #0
  8001c7c:	f8c3 2320 	str.w	r2, [r3, #800]	@ 0x320
+		q->tail = 0;
  8001c80:	68fb      	ldr	r3, [r7, #12]
  8001c82:	2200      	movs	r2, #0
  8001c84:	f8c3 2324 	str.w	r2, [r3, #804]	@ 0x324
+		q->queue[q->head] = elem;
  8001c88:	68fb      	ldr	r3, [r7, #12]
  8001c8a:	f8d3 3320 	ldr.w	r3, [r3, #800]	@ 0x320
  8001c8e:	68fa      	ldr	r2, [r7, #12]
@@ -2494,7 +2827,10 @@ Disassembly of section .text:
  8001c94:	1d3a      	adds	r2, r7, #4
  8001c96:	e892 0003 	ldmia.w	r2, {r0, r1}
  8001c9a:	e883 0003 	stmia.w	r3, {r0, r1}
+		return;
  8001c9e:	e030      	b.n	8001d02 <enqueueW+0xae>
+	}
+	if((q->head+1)%100 == q->tail) return;
  8001ca0:	68fb      	ldr	r3, [r7, #12]
  8001ca2:	f8d3 3320 	ldr.w	r3, [r3, #800]	@ 0x320
  8001ca6:	1c5a      	adds	r2, r3, #1
@@ -2510,6 +2846,8 @@ Disassembly of section .text:
  8001cbe:	f8d2 2324 	ldr.w	r2, [r2, #804]	@ 0x324
  8001cc2:	4293      	cmp	r3, r2
  8001cc4:	d01c      	beq.n	8001d00 <enqueueW+0xac>
+
+	q->head = (q->head+1)%100;
  8001cc6:	68fb      	ldr	r3, [r7, #12]
  8001cc8:	f8d3 3320 	ldr.w	r3, [r3, #800]	@ 0x320
  8001ccc:	1c5a      	adds	r2, r3, #1
@@ -2523,6 +2861,7 @@ Disassembly of section .text:
  8001ce0:	1ad3      	subs	r3, r2, r3
  8001ce2:	68fa      	ldr	r2, [r7, #12]
  8001ce4:	f8c2 3320 	str.w	r3, [r2, #800]	@ 0x320
+	q->queue[q->head] = elem;
  8001ce8:	68fb      	ldr	r3, [r7, #12]
  8001cea:	f8d3 3320 	ldr.w	r3, [r3, #800]	@ 0x320
  8001cee:	68fa      	ldr	r2, [r7, #12]
@@ -2532,7 +2871,9 @@ Disassembly of section .text:
  8001cf6:	e892 0003 	ldmia.w	r2, {r0, r1}
  8001cfa:	e883 0003 	stmia.w	r3, {r0, r1}
  8001cfe:	e000      	b.n	8001d02 <enqueueW+0xae>
+	if((q->head+1)%100 == q->tail) return;
  8001d00:	bf00      	nop
+}
  8001d02:	3714      	adds	r7, #20
  8001d04:	46bd      	mov	sp, r7
  8001d06:	f85d 7b04 	ldr.w	r7, [sp], #4
@@ -2540,29 +2881,38 @@ Disassembly of section .text:
  8001d0c:	51eb851f 	.word	0x51eb851f
 
 08001d10 <dequeueW>:
+
+Wrapper dequeueW(WQueue* q){
  8001d10:	b480      	push	{r7}
  8001d12:	b08d      	sub	sp, #52	@ 0x34
  8001d14:	af00      	add	r7, sp, #0
  8001d16:	60f8      	str	r0, [r7, #12]
+	if (q->head == -1){
  8001d18:	68fb      	ldr	r3, [r7, #12]
  8001d1a:	f8d3 3320 	ldr.w	r3, [r3, #800]	@ 0x320
  8001d1e:	f1b3 3fff 	cmp.w	r3, #4294967295
  8001d22:	d10e      	bne.n	8001d42 <dequeueW+0x32>
+		Wrapper temp = {0.0f, 0.0f};
  8001d24:	f04f 0300 	mov.w	r3, #0
  8001d28:	61bb      	str	r3, [r7, #24]
  8001d2a:	f04f 0300 	mov.w	r3, #0
  8001d2e:	61fb      	str	r3, [r7, #28]
+		//CDC_Transmit_FS("Queue is empty.\n", sizeof("Queue is empty.\n"));
+		return temp;
  8001d30:	f107 0328 	add.w	r3, r7, #40	@ 0x28
  8001d34:	f107 0218 	add.w	r2, r7, #24
  8001d38:	e892 0003 	ldmia.w	r2, {r0, r1}
  8001d3c:	e883 0003 	stmia.w	r3, {r0, r1}
  8001d40:	e04b      	b.n	8001dda <dequeueW+0xca>
+	}
+	if (q->head == q->tail){//only one element in queue
  8001d42:	68fb      	ldr	r3, [r7, #12]
  8001d44:	f8d3 2320 	ldr.w	r2, [r3, #800]	@ 0x320
  8001d48:	68fb      	ldr	r3, [r7, #12]
  8001d4a:	f8d3 3324 	ldr.w	r3, [r3, #804]	@ 0x324
  8001d4e:	429a      	cmp	r2, r3
  8001d50:	d11e      	bne.n	8001d90 <dequeueW+0x80>
+		Wrapper elem = q->queue[q->tail];
  8001d52:	68fb      	ldr	r3, [r7, #12]
  8001d54:	f8d3 3324 	ldr.w	r3, [r3, #804]	@ 0x324
  8001d58:	68f9      	ldr	r1, [r7, #12]
@@ -2571,17 +2921,22 @@ Disassembly of section .text:
  8001d60:	440b      	add	r3, r1
  8001d62:	e893 0003 	ldmia.w	r3, {r0, r1}
  8001d66:	e882 0003 	stmia.w	r2, {r0, r1}
+		q->head = -1;
  8001d6a:	68fb      	ldr	r3, [r7, #12]
  8001d6c:	f04f 32ff 	mov.w	r2, #4294967295
  8001d70:	f8c3 2320 	str.w	r2, [r3, #800]	@ 0x320
+		q->tail = -1;
  8001d74:	68fb      	ldr	r3, [r7, #12]
  8001d76:	f04f 32ff 	mov.w	r2, #4294967295
  8001d7a:	f8c3 2324 	str.w	r2, [r3, #804]	@ 0x324
+		return elem;
  8001d7e:	f107 0328 	add.w	r3, r7, #40	@ 0x28
  8001d82:	f107 0210 	add.w	r2, r7, #16
  8001d86:	e892 0003 	ldmia.w	r2, {r0, r1}
  8001d8a:	e883 0003 	stmia.w	r3, {r0, r1}
  8001d8e:	e024      	b.n	8001dda <dequeueW+0xca>
+	}
+	Wrapper elem = q->queue[q->tail];
  8001d90:	68fb      	ldr	r3, [r7, #12]
  8001d92:	f8d3 3324 	ldr.w	r3, [r3, #804]	@ 0x324
  8001d96:	68f9      	ldr	r1, [r7, #12]
@@ -2590,6 +2945,7 @@ Disassembly of section .text:
  8001d9e:	440b      	add	r3, r1
  8001da0:	e893 0003 	ldmia.w	r3, {r0, r1}
  8001da4:	e882 0003 	stmia.w	r2, {r0, r1}
+	q->tail = (q->tail+1)%100;
  8001da8:	68fb      	ldr	r3, [r7, #12]
  8001daa:	f8d3 3324 	ldr.w	r3, [r3, #804]	@ 0x324
  8001dae:	1c5a      	adds	r2, r3, #1
@@ -2603,10 +2959,13 @@ Disassembly of section .text:
  8001dc2:	1ad3      	subs	r3, r2, r3
  8001dc4:	68fa      	ldr	r2, [r7, #12]
  8001dc6:	f8c2 3324 	str.w	r3, [r2, #804]	@ 0x324
+
+	return elem;
  8001dca:	f107 0328 	add.w	r3, r7, #40	@ 0x28
  8001dce:	f107 0220 	add.w	r2, r7, #32
  8001dd2:	e892 0003 	ldmia.w	r2, {r0, r1}
  8001dd6:	e883 0003 	stmia.w	r3, {r0, r1}
+}
  8001dda:	6aba      	ldr	r2, [r7, #40]	@ 0x28
  8001ddc:	6afb      	ldr	r3, [r7, #44]	@ 0x2c
  8001dde:	ee07 2a10 	vmov	s14, r2
@@ -2620,10 +2979,13 @@ Disassembly of section .text:
  8001df8:	51eb851f 	.word	0x51eb851f
 
 08001dfc <WisEmpty>:
+
+uint8_t WisEmpty(WQueue* q){
  8001dfc:	b480      	push	{r7}
  8001dfe:	b083      	sub	sp, #12
  8001e00:	af00      	add	r7, sp, #0
  8001e02:	6078      	str	r0, [r7, #4]
+	return (q->tail == -1);
  8001e04:	687b      	ldr	r3, [r7, #4]
  8001e06:	f8d3 3324 	ldr.w	r3, [r3, #804]	@ 0x324
  8001e0a:	f1b3 3fff 	cmp.w	r3, #4294967295
@@ -2631,6 +2993,7 @@ Disassembly of section .text:
  8001e10:	2301      	moveq	r3, #1
  8001e12:	2300      	movne	r3, #0
  8001e14:	b2db      	uxtb	r3, r3
+}
  8001e16:	4618      	mov	r0, r3
  8001e18:	370c      	adds	r7, #12
  8001e1a:	46bd      	mov	sp, r7
@@ -7261,6 +7624,12 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8003f0e:	e7fd      	b.n	8003f0c <Error_Handler+0x8>
 
 08003f10 <Motor_Create>:
+extern PID_Handle_t pid_b1;
+extern PID_Handle_t pid_b2;
+extern PID_Handle_t pid_b3;
+extern PID_Handle_t pid_b4;
+
+void Motor_Create(Motor_Handle_t* handle, TIM_HandleTypeDef* pwm_timer, uint32_t pwm_channel, GPIO_TypeDef* dir_port, uint16_t dir_pin){
  8003f10:	b480      	push	{r7}
  8003f12:	b085      	sub	sp, #20
  8003f14:	af00      	add	r7, sp, #0
@@ -7268,39 +7637,58 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8003f18:	60b9      	str	r1, [r7, #8]
  8003f1a:	607a      	str	r2, [r7, #4]
  8003f1c:	603b      	str	r3, [r7, #0]
+
+	if (handle == NULL) return;
  8003f1e:	68fb      	ldr	r3, [r7, #12]
  8003f20:	2b00      	cmp	r3, #0
  8003f22:	d00f      	beq.n	8003f44 <Motor_Create+0x34>
+
+	handle->pwm_timer = pwm_timer;
  8003f24:	68fb      	ldr	r3, [r7, #12]
  8003f26:	68ba      	ldr	r2, [r7, #8]
  8003f28:	601a      	str	r2, [r3, #0]
+	handle->pwm_channel = pwm_channel;
  8003f2a:	68fb      	ldr	r3, [r7, #12]
  8003f2c:	687a      	ldr	r2, [r7, #4]
  8003f2e:	605a      	str	r2, [r3, #4]
+	handle->dir_port = dir_port;
  8003f30:	68fb      	ldr	r3, [r7, #12]
  8003f32:	683a      	ldr	r2, [r7, #0]
  8003f34:	609a      	str	r2, [r3, #8]
+	handle->dir_pin = dir_pin;
  8003f36:	68fb      	ldr	r3, [r7, #12]
  8003f38:	8b3a      	ldrh	r2, [r7, #24]
  8003f3a:	819a      	strh	r2, [r3, #12]
+	handle->mode = 1;
  8003f3c:	68fb      	ldr	r3, [r7, #12]
  8003f3e:	2201      	movs	r2, #1
  8003f40:	739a      	strb	r2, [r3, #14]
  8003f42:	e000      	b.n	8003f46 <Motor_Create+0x36>
+	if (handle == NULL) return;
  8003f44:	bf00      	nop
+}
  8003f46:	3714      	adds	r7, #20
  8003f48:	46bd      	mov	sp, r7
  8003f4a:	f85d 7b04 	ldr.w	r7, [sp], #4
  8003f4e:	4770      	bx	lr
 
 08003f50 <handle_command>:
+
+// Akshat parse for scaling to 8 motors:
+void handle_command(char *cmd)
+{
  8003f50:	b580      	push	{r7, lr}
  8003f52:	b08a      	sub	sp, #40	@ 0x28
  8003f54:	af00      	add	r7, sp, #0
  8003f56:	6078      	str	r0, [r7, #4]
+	const char *p = cmd;
  8003f58:	687b      	ldr	r3, [r7, #4]
  8003f5a:	613b      	str	r3, [r7, #16]
+
+	while (*p){
  8003f5c:	e0f4      	b.n	8004148 <handle_command+0x1f8>
+
+    	while (*p && !(*p == 'b' || *p == 'B' || *p == 's' || *p == 'S')) p++;
  8003f5e:	693b      	ldr	r3, [r7, #16]
  8003f60:	3301      	adds	r3, #1
  8003f62:	613b      	str	r3, [r7, #16]
@@ -7324,10 +7712,14 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8003f86:	781b      	ldrb	r3, [r3, #0]
  8003f88:	2b53      	cmp	r3, #83	@ 0x53
  8003f8a:	d1e8      	bne.n	8003f5e <handle_command+0xe>
+
+        if (*p == '\0') break;
  8003f8c:	693b      	ldr	r3, [r7, #16]
  8003f8e:	781b      	ldrb	r3, [r3, #0]
  8003f90:	2b00      	cmp	r3, #0
  8003f92:	f000 80df 	beq.w	8004154 <handle_command+0x204>
+
+		if (*p == 'b' || *p == 'B'){
  8003f96:	693b      	ldr	r3, [r7, #16]
  8003f98:	781b      	ldrb	r3, [r3, #0]
  8003f9a:	2b62      	cmp	r3, #98	@ 0x62
@@ -7336,17 +7728,23 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8003fa0:	781b      	ldrb	r3, [r3, #0]
  8003fa2:	2b42      	cmp	r3, #66	@ 0x42
  8003fa4:	d130      	bne.n	8004008 <handle_command+0xb8>
+
+			p++;
  8003fa6:	693b      	ldr	r3, [r7, #16]
  8003fa8:	3301      	adds	r3, #1
  8003faa:	613b      	str	r3, [r7, #16]
+			int id = parse_cmd(&p);
  8003fac:	f107 0310 	add.w	r3, r7, #16
  8003fb0:	4618      	mov	r0, r3
  8003fb2:	f000 f8e9 	bl	8004188 <parse_cmd>
  8003fb6:	61b8      	str	r0, [r7, #24]
+			int rpm = parse_cmd(&p);
  8003fb8:	f107 0310 	add.w	r3, r7, #16
  8003fbc:	4618      	mov	r0, r3
  8003fbe:	f000 f8e3 	bl	8004188 <parse_cmd>
  8003fc2:	6178      	str	r0, [r7, #20]
+
+			switch (id) {
  8003fc4:	69bb      	ldr	r3, [r7, #24]
  8003fc6:	3b01      	subs	r3, #1
  8003fc8:	2b03      	cmp	r3, #3
@@ -7358,24 +7756,34 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8003fd8:	08003fed 	.word	0x08003fed
  8003fdc:	08003ff5 	.word	0x08003ff5
  8003fe0:	08003ffd 	.word	0x08003ffd
+				case 1: b1_target_rpm = rpm; break;
  8003fe4:	4a5e      	ldr	r2, [pc, #376]	@ (8004160 <handle_command+0x210>)
  8003fe6:	697b      	ldr	r3, [r7, #20]
  8003fe8:	6013      	str	r3, [r2, #0]
  8003fea:	e00c      	b.n	8004006 <handle_command+0xb6>
+				case 2: b2_target_rpm = rpm; break;
  8003fec:	4a5d      	ldr	r2, [pc, #372]	@ (8004164 <handle_command+0x214>)
  8003fee:	697b      	ldr	r3, [r7, #20]
  8003ff0:	6013      	str	r3, [r2, #0]
  8003ff2:	e008      	b.n	8004006 <handle_command+0xb6>
+				case 3: b3_target_rpm = rpm; break;
  8003ff4:	4a5c      	ldr	r2, [pc, #368]	@ (8004168 <handle_command+0x218>)
  8003ff6:	697b      	ldr	r3, [r7, #20]
  8003ff8:	6013      	str	r3, [r2, #0]
  8003ffa:	e004      	b.n	8004006 <handle_command+0xb6>
+				case 4: b4_target_rpm = rpm; break;
  8003ffc:	4a5b      	ldr	r2, [pc, #364]	@ (800416c <handle_command+0x21c>)
  8003ffe:	697b      	ldr	r3, [r7, #20]
  8004000:	6013      	str	r3, [r2, #0]
  8004002:	e000      	b.n	8004006 <handle_command+0xb6>
+				default: break;
  8004004:	bf00      	nop
+		if (*p == 'b' || *p == 'B'){
  8004006:	e09f      	b.n	8004148 <handle_command+0x1f8>
+			}
+		}
+
+		else if (*p == 's' || *p == 'S')
  8004008:	693b      	ldr	r3, [r7, #16]
  800400a:	781b      	ldrb	r3, [r3, #0]
  800400c:	2b73      	cmp	r3, #115	@ 0x73
@@ -7384,19 +7792,26 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004012:	781b      	ldrb	r3, [r3, #0]
  8004014:	2b53      	cmp	r3, #83	@ 0x53
  8004016:	f040 8090 	bne.w	800413a <handle_command+0x1ea>
+		{
+			p++;
  800401a:	693b      	ldr	r3, [r7, #16]
  800401c:	3301      	adds	r3, #1
  800401e:	613b      	str	r3, [r7, #16]
+			int id = parse_cmd(&p);
  8004020:	f107 0310 	add.w	r3, r7, #16
  8004024:	4618      	mov	r0, r3
  8004026:	f000 f8af 	bl	8004188 <parse_cmd>
  800402a:	6238      	str	r0, [r7, #32]
+			int angle = parse_cmd(&p);
  800402c:	f107 0310 	add.w	r3, r7, #16
  8004030:	4618      	mov	r0, r3
  8004032:	f000 f8a9 	bl	8004188 <parse_cmd>
  8004036:	61f8      	str	r0, [r7, #28]
+			Stepper_Handle_t *S = NULL;
  8004038:	2300      	movs	r3, #0
  800403a:	627b      	str	r3, [r7, #36]	@ 0x24
+
+			switch (id) {
  800403c:	6a3b      	ldr	r3, [r7, #32]
  800403e:	3b01      	subs	r3, #1
  8004040:	2b03      	cmp	r3, #3
@@ -7408,22 +7823,32 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004050:	08004063 	.word	0x08004063
  8004054:	08004069 	.word	0x08004069
  8004058:	0800406f 	.word	0x0800406f
+				case 1: S = &S1; break;
  800405c:	4b44      	ldr	r3, [pc, #272]	@ (8004170 <handle_command+0x220>)
  800405e:	627b      	str	r3, [r7, #36]	@ 0x24
  8004060:	e009      	b.n	8004076 <handle_command+0x126>
+				case 2: S = &S2; break;
  8004062:	4b44      	ldr	r3, [pc, #272]	@ (8004174 <handle_command+0x224>)
  8004064:	627b      	str	r3, [r7, #36]	@ 0x24
  8004066:	e006      	b.n	8004076 <handle_command+0x126>
+				case 3: S = &S3; break;
  8004068:	4b43      	ldr	r3, [pc, #268]	@ (8004178 <handle_command+0x228>)
  800406a:	627b      	str	r3, [r7, #36]	@ 0x24
  800406c:	e003      	b.n	8004076 <handle_command+0x126>
+				case 4: S = &S4; break;
  800406e:	4b43      	ldr	r3, [pc, #268]	@ (800417c <handle_command+0x22c>)
  8004070:	627b      	str	r3, [r7, #36]	@ 0x24
  8004072:	e000      	b.n	8004076 <handle_command+0x126>
+				default: break;
  8004074:	bf00      	nop
+			}
+
+			if (S)
  8004076:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  8004078:	2b00      	cmp	r3, #0
  800407a:	d062      	beq.n	8004142 <handle_command+0x1f2>
+			{
+				if (angle == (int) S->lastInstruct.degree){
  800407c:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  800407e:	edd3 7ad6 	vldr	s15, [r3, #856]	@ 0x358
  8004082:	eefd 7ae7 	vcvt.s32.f32	s15, s15
@@ -7431,6 +7856,7 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800408a:	69fb      	ldr	r3, [r7, #28]
  800408c:	4293      	cmp	r3, r2
  800408e:	d112      	bne.n	80040b6 <handle_command+0x166>
+					while (*p && !isspace((unsigned char)*p)) p++;
  8004090:	e002      	b.n	8004098 <handle_command+0x148>
  8004092:	693b      	ldr	r3, [r7, #16]
  8004094:	3301      	adds	r3, #1
@@ -7448,29 +7874,41 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80040ac:	f003 0308 	and.w	r3, r3, #8
  80040b0:	2b00      	cmp	r3, #0
  80040b2:	d0ee      	beq.n	8004092 <handle_command+0x142>
+					continue;
  80040b4:	e047      	b.n	8004146 <handle_command+0x1f6>
+				}
+
+					Wrapper temp;
+					temp.degree = angle;
  80040b6:	69fb      	ldr	r3, [r7, #28]
  80040b8:	ee07 3a90 	vmov	s15, r3
  80040bc:	eef8 7ae7 	vcvt.f32.s32	s15, s15
  80040c0:	edc7 7a02 	vstr	s15, [r7, #8]
+					temp.rpm = 30;
  80040c4:	4b2f      	ldr	r3, [pc, #188]	@ (8004184 <handle_command+0x234>)
  80040c6:	60fb      	str	r3, [r7, #12]
+					S->lastInstruct.degree = angle;
  80040c8:	69fb      	ldr	r3, [r7, #28]
  80040ca:	ee07 3a90 	vmov	s15, r3
  80040ce:	eef8 7ae7 	vcvt.f32.s32	s15, s15
  80040d2:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  80040d4:	edc3 7ad6 	vstr	s15, [r3, #856]	@ 0x358
+					S->lastInstruct.rpm = temp.rpm;
  80040d8:	68fa      	ldr	r2, [r7, #12]
  80040da:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  80040dc:	f8c3 235c 	str.w	r2, [r3, #860]	@ 0x35c
+					if (!S->queueMode){
  80040e0:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  80040e2:	f893 3026 	ldrb.w	r3, [r3, #38]	@ 0x26
  80040e6:	2b00      	cmp	r3, #0
  80040e8:	d104      	bne.n	80040f4 <handle_command+0x1a4>
+						initWQueue(&S->q);
  80040ea:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  80040ec:	3328      	adds	r3, #40	@ 0x28
  80040ee:	4618      	mov	r0, r3
  80040f0:	f7fd fd82 	bl	8001bf8 <initWQueue>
+					}
+					enqueueW(&S->q, temp);
  80040f4:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  80040f6:	3328      	adds	r3, #40	@ 0x28
  80040f8:	ed97 7a02 	vldr	s14, [r7, #8]
@@ -7479,10 +7917,12 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004104:	eef0 0a67 	vmov.f32	s1, s15
  8004108:	4618      	mov	r0, r3
  800410a:	f7fd fda3 	bl	8001c54 <enqueueW>
+					if (!S->queueMode){
  800410e:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  8004110:	f893 3026 	ldrb.w	r3, [r3, #38]	@ 0x26
  8004114:	2b00      	cmp	r3, #0
  8004116:	d114      	bne.n	8004142 <handle_command+0x1f2>
+						if (!S->pending_preemption && S->isMoving) S->pending_preemption = 1;
  8004118:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  800411a:	f893 3375 	ldrb.w	r3, [r3, #885]	@ 0x375
  800411e:	b2db      	uxtb	r3, r3
@@ -7496,20 +7936,33 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004130:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  8004132:	2201      	movs	r2, #1
  8004134:	f883 2375 	strb.w	r2, [r3, #885]	@ 0x375
+		{
  8004138:	e003      	b.n	8004142 <handle_command+0x1f2>
+					}
+			  }
+
+			}
+		else p++;		// if we land on weird character
  800413a:	693b      	ldr	r3, [r7, #16]
  800413c:	3301      	adds	r3, #1
  800413e:	613b      	str	r3, [r7, #16]
  8004140:	e002      	b.n	8004148 <handle_command+0x1f8>
+		{
  8004142:	bf00      	nop
  8004144:	e000      	b.n	8004148 <handle_command+0x1f8>
+					continue;
  8004146:	bf00      	nop
+	while (*p){
  8004148:	693b      	ldr	r3, [r7, #16]
  800414a:	781b      	ldrb	r3, [r3, #0]
  800414c:	2b00      	cmp	r3, #0
  800414e:	f47f af09 	bne.w	8003f64 <handle_command+0x14>
+	}
+}
  8004152:	e000      	b.n	8004156 <handle_command+0x206>
+        if (*p == '\0') break;
  8004154:	bf00      	nop
+}
  8004156:	bf00      	nop
  8004158:	3728      	adds	r7, #40	@ 0x28
  800415a:	46bd      	mov	sp, r7
@@ -7527,17 +7980,27 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004184:	41f00000 	.word	0x41f00000
 
 08004188 <parse_cmd>:
+//    if (new_kd >= 0.0f) pid->kd = new_kd;
+//}
+
+
+// Soham's Parse Function (from Nova):
+int parse_cmd(const char **p) {
  8004188:	b480      	push	{r7}
  800418a:	b087      	sub	sp, #28
  800418c:	af00      	add	r7, sp, #0
  800418e:	6078      	str	r0, [r7, #4]
+	const char *str = *p;
  8004190:	687b      	ldr	r3, [r7, #4]
  8004192:	681b      	ldr	r3, [r3, #0]
  8004194:	617b      	str	r3, [r7, #20]
+	int sign = 1, result = 0;
  8004196:	2301      	movs	r3, #1
  8004198:	613b      	str	r3, [r7, #16]
  800419a:	2300      	movs	r3, #0
  800419c:	60fb      	str	r3, [r7, #12]
+
+	while (isspace((unsigned char)*str)) str++;
  800419e:	e002      	b.n	80041a6 <parse_cmd+0x1e>
  80041a0:	697b      	ldr	r3, [r7, #20]
  80041a2:	3301      	adds	r3, #1
@@ -7551,6 +8014,8 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80041b2:	f003 0308 	and.w	r3, r3, #8
  80041b6:	2b00      	cmp	r3, #0
  80041b8:	d1f2      	bne.n	80041a0 <parse_cmd+0x18>
+
+	if (*str == '-') { sign = -1; str++; }
  80041ba:	697b      	ldr	r3, [r7, #20]
  80041bc:	781b      	ldrb	r3, [r3, #0]
  80041be:	2b2d      	cmp	r3, #45	@ 0x2d
@@ -7561,6 +8026,7 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80041ca:	3301      	adds	r3, #1
  80041cc:	617b      	str	r3, [r7, #20]
  80041ce:	e006      	b.n	80041de <parse_cmd+0x56>
+	else if (*str == '+') { str++; }
  80041d0:	697b      	ldr	r3, [r7, #20]
  80041d2:	781b      	ldrb	r3, [r3, #0]
  80041d4:	2b2b      	cmp	r3, #43	@ 0x2b
@@ -7568,6 +8034,8 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80041d8:	697b      	ldr	r3, [r7, #20]
  80041da:	3301      	adds	r3, #1
  80041dc:	617b      	str	r3, [r7, #20]
+
+	if (!isdigit((unsigned char)*str)) return 0;
  80041de:	697b      	ldr	r3, [r7, #20]
  80041e0:	781b      	ldrb	r3, [r3, #0]
  80041e2:	3301      	adds	r3, #1
@@ -7579,6 +8047,9 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80041f0:	d10f      	bne.n	8004212 <parse_cmd+0x8a>
  80041f2:	2300      	movs	r3, #0
  80041f4:	e02c      	b.n	8004250 <parse_cmd+0xc8>
+
+	while (isdigit((unsigned char)*str)) {
+		result = result * 10 + (*str - '0');
  80041f6:	68fa      	ldr	r2, [r7, #12]
  80041f8:	4613      	mov	r3, r2
  80041fa:	009b      	lsls	r3, r3, #2
@@ -7590,9 +8061,11 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004206:	3b30      	subs	r3, #48	@ 0x30
  8004208:	4413      	add	r3, r2
  800420a:	60fb      	str	r3, [r7, #12]
+		str++;
  800420c:	697b      	ldr	r3, [r7, #20]
  800420e:	3301      	adds	r3, #1
  8004210:	617b      	str	r3, [r7, #20]
+	while (isdigit((unsigned char)*str)) {
  8004212:	697b      	ldr	r3, [r7, #20]
  8004214:	781b      	ldrb	r3, [r3, #0]
  8004216:	3301      	adds	r3, #1
@@ -7602,6 +8075,9 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800421e:	f003 0304 	and.w	r3, r3, #4
  8004222:	2b00      	cmp	r3, #0
  8004224:	d1e7      	bne.n	80041f6 <parse_cmd+0x6e>
+	}
+
+	while (isspace((unsigned char)*str)) str++;
  8004226:	e002      	b.n	800422e <parse_cmd+0xa6>
  8004228:	697b      	ldr	r3, [r7, #20]
  800422a:	3301      	adds	r3, #1
@@ -7615,12 +8091,16 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800423a:	f003 0308 	and.w	r3, r3, #8
  800423e:	2b00      	cmp	r3, #0
  8004240:	d1f2      	bne.n	8004228 <parse_cmd+0xa0>
+
+	*p = str; // update pointer for next parse
  8004242:	687b      	ldr	r3, [r7, #4]
  8004244:	697a      	ldr	r2, [r7, #20]
  8004246:	601a      	str	r2, [r3, #0]
+	return sign * result;
  8004248:	693b      	ldr	r3, [r7, #16]
  800424a:	68fa      	ldr	r2, [r7, #12]
  800424c:	fb02 f303 	mul.w	r3, r2, r3
+}
  8004250:	4618      	mov	r0, r3
  8004252:	371c      	adds	r7, #28
  8004254:	46bd      	mov	sp, r7
@@ -7629,14 +8109,21 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800425c:	0800d1f0 	.word	0x0800d1f0
 
 08004260 <Motor_SetOutput>:
+
+void Motor_SetOutput(Motor_Handle_t* handle, float output) {
  8004260:	b580      	push	{r7, lr}
  8004262:	b084      	sub	sp, #16
  8004264:	af00      	add	r7, sp, #0
  8004266:	6078      	str	r0, [r7, #4]
  8004268:	ed87 0a00 	vstr	s0, [r7]
+
+	if (handle == NULL) return;
  800426c:	687b      	ldr	r3, [r7, #4]
  800426e:	2b00      	cmp	r3, #0
  8004270:	d07b      	beq.n	800436a <Motor_SetOutput+0x10a>
+
+	// clamped input - change later
+	if (output > 1.0f) output = 1.0f;	// bruv +ve is forward -ve is reverse similar to how we handled NOVA
  8004272:	edd7 7a00 	vldr	s15, [r7]
  8004276:	eeb7 7a00 	vmov.f32	s14, #112	@ 0x3f800000  1.0
  800427a:	eef4 7ac7 	vcmpe.f32	s15, s14
@@ -7644,6 +8131,7 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004282:	dd02      	ble.n	800428a <Motor_SetOutput+0x2a>
  8004284:	f04f 537e 	mov.w	r3, #1065353216	@ 0x3f800000
  8004288:	603b      	str	r3, [r7, #0]
+	if (output < -1.0f) output = -1.0f;
  800428a:	edd7 7a00 	vldr	s15, [r7]
  800428e:	eebf 7a00 	vmov.f32	s14, #240	@ 0xbf800000 -1.0
  8004292:	eef4 7ac7 	vcmpe.f32	s15, s14
@@ -7651,10 +8139,14 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800429a:	d501      	bpl.n	80042a0 <Motor_SetOutput+0x40>
  800429c:	4b35      	ldr	r3, [pc, #212]	@ (8004374 <Motor_SetOutput+0x114>)
  800429e:	603b      	str	r3, [r7, #0]
+
+	// set direction
+	if (output >= 0.0f) {
  80042a0:	edd7 7a00 	vldr	s15, [r7]
  80042a4:	eef5 7ac0 	vcmpe.f32	s15, #0.0
  80042a8:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
  80042ac:	db08      	blt.n	80042c0 <Motor_SetOutput+0x60>
+		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_SET); // Forward (defined by the current operating mode)
  80042ae:	687b      	ldr	r3, [r7, #4]
  80042b0:	6898      	ldr	r0, [r3, #8]
  80042b2:	687b      	ldr	r3, [r7, #4]
@@ -7663,6 +8155,8 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80042b8:	4619      	mov	r1, r3
  80042ba:	f001 fe4f 	bl	8005f5c <HAL_GPIO_WritePin>
  80042be:	e007      	b.n	80042d0 <Motor_SetOutput+0x70>
+	} else {
+		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_RESET); // Reverse (defined by the current operating mode)
  80042c0:	687b      	ldr	r3, [r7, #4]
  80042c2:	6898      	ldr	r0, [r3, #8]
  80042c4:	687b      	ldr	r3, [r7, #4]
@@ -7670,11 +8164,16 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80042c8:	2200      	movs	r2, #0
  80042ca:	4619      	mov	r1, r3
  80042cc:	f001 fe46 	bl	8005f5c <HAL_GPIO_WritePin>
+	}
+
+	// calculate and set PWM
+	uint32_t timer_period = __HAL_TIM_GET_AUTORELOAD(handle->pwm_timer);
  80042d0:	687b      	ldr	r3, [r7, #4]
  80042d2:	681b      	ldr	r3, [r3, #0]
  80042d4:	681b      	ldr	r3, [r3, #0]
  80042d6:	6adb      	ldr	r3, [r3, #44]	@ 0x2c
  80042d8:	60fb      	str	r3, [r7, #12]
+	uint32_t pulse_width = (uint32_t)(fabsf(output) * timer_period);
  80042da:	edd7 7a00 	vldr	s15, [r7]
  80042de:	eeb0 7ae7 	vabs.f32	s14, s15
  80042e2:	68fb      	ldr	r3, [r7, #12]
@@ -7684,6 +8183,7 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80042f0:	eefc 7ae7 	vcvt.u32.f32	s15, s15
  80042f4:	ee17 3a90 	vmov	r3, s15
  80042f8:	60bb      	str	r3, [r7, #8]
+	__HAL_TIM_SET_COMPARE(handle->pwm_timer, handle->pwm_channel, pulse_width);
  80042fa:	687b      	ldr	r3, [r7, #4]
  80042fc:	685b      	ldr	r3, [r3, #4]
  80042fe:	2b00      	cmp	r3, #0
@@ -7740,7 +8240,9 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8004364:	68bb      	ldr	r3, [r7, #8]
  8004366:	64d3      	str	r3, [r2, #76]	@ 0x4c
  8004368:	e000      	b.n	800436c <Motor_SetOutput+0x10c>
+	if (handle == NULL) return;
  800436a:	bf00      	nop
+}
  800436c:	3710      	adds	r7, #16
  800436e:	46bd      	mov	sp, r7
  8004370:	bd80      	pop	{r7, pc}

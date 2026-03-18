@@ -137,6 +137,8 @@ char main_cmd_buf[128];                 // The CPU parses this in the while(1) l
 volatile uint8_t error_entered = 0;
 volatile uint32_t last_error;
 
+
+
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
