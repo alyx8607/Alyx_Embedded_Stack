@@ -137,7 +137,10 @@ char main_cmd_buf[128];                 // The CPU parses this in the while(1) l
 volatile uint8_t error_entered = 0;
 volatile uint32_t last_error;
 
-
+//uint32_t last_cmd_time = 0;
+//volatile uint8_t wdt_active = 0; // indicate teleop watchdog has taken control
+volatile uint8_t estop_active = 0;
+volatile uint8_t estop_action_done = 0;
 
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
@@ -305,9 +308,7 @@ int main(void)
   initTimer(&S3);
   initTimer(&S4);
 
-  // temporary stepper enable until we figure out wht to do with it
-
-  //timer period callback
+  // timer period callback
 
   uint32_t period_us = 1000000 / CTRL_Loop_Freq;
   //TIM6_SetPeriod_us((1.0f/CTRL_Loop_Freq) * 1000000);
@@ -364,7 +365,9 @@ int main(void)
   {
 	  if (mode == IDLE) mode = TELEOP; //forcing teleop instead of idle for now, will change when switches.
 	  switch(mode){
+
 	  case HOMING:
+
 		  if(S1.correctOffset == 1){
 			  moveAngle(&S1, -S1.limSwitchOffset, 30);
 			  S1.correctOffset = 2;
@@ -396,28 +399,93 @@ int main(void)
 		  		  }
 		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = IDLE;
 		  break;
+
 	  case TELEOP:
+
+		  if (estop_active){
+			  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET){
+				  estop_active = 0;
+				  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
+			  }
+		  }
 
 		  if (uart_data_ready) {
 			uart_data_ready = 0;
-			handle_command(main_cmd_buf);
+			if (!estop_active){
+				//last_cmd_time = HAL_GetTick();
+				handle_command(main_cmd_buf);
+			}
 		  }
 
-		  if(!S1.isMoving && !WisEmpty(&S1.q) && !S1.pending_preemption){
-			  Wrapper temp = dequeueW(&S1.q);
-			  moveAngleAbsolute(&S1, temp.degree, temp.rpm, &B1);
+
+
+		  // so that new parsing doesnt parse P.A.I.N (bas failsafe in case estop press ke baad bhi instructions aa rahe he)
+		  // oh also - FUCK EMI
+
+		  // E-stop provisions
+		  if (estop_active) {
+			  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+			  // Step 1: Preempt normal movements so they cleanly stop and calculate exact absolute angles.
+				// We only do this if we haven't already started the return-to-zero sequence.
+				if (!estop_action_done) {
+					if (S1.isMoving) S1.pending_preemption = 1;
+					if (S2.isMoving) S2.pending_preemption = 1;
+					if (S3.isMoving) S3.pending_preemption = 1;
+					if (S4.isMoving) S4.pending_preemption = 1;
+				}
+
+				// Step 2: Once steppers naturally halt and update their angles, trigger zeroing
+				if (!S1.isMoving && !S2.isMoving && !S3.isMoving && !S4.isMoving) {
+				  if (!estop_action_done) {
+					  estop_action_done = 1;
+
+					  if (S1.homing_status) moveAngleAbsolute(&S1, 0, 30, &B1);
+					  if (S2.homing_status) moveAngleAbsolute(&S2, 0, 30, &B2);
+					  if (S3.homing_status) moveAngleAbsolute(&S3, 0, 30, &B3);
+					  if (S4.homing_status) moveAngleAbsolute(&S4, 0, 30, &B4);
+
+					  initWQueue(&S1.q); initWQueue(&S2.q); initWQueue(&S3.q); initWQueue(&S4.q);
+				  }
+				}
+
 		  }
-		  if(!S2.isMoving && !WisEmpty(&S2.q) && !S2.pending_preemption){
-			  Wrapper temp = dequeueW(&S2.q);
-			  moveAngleAbsolute(&S2, temp.degree, temp.rpm, &B2);
-		  }
-		  if(!S3.isMoving && !WisEmpty(&S3.q) && !S3.pending_preemption){
-			  Wrapper temp = dequeueW(&S3.q);
-			  moveAngleAbsolute(&S3, temp.degree, temp.rpm, &B3);
-		  }
-		  if(!S4.isMoving && !WisEmpty(&S4.q) && !S4.pending_preemption){
-			  Wrapper temp = dequeueW(&S4.q);
-			  moveAngleAbsolute(&S4, temp.degree, temp.rpm, &B4);
+
+
+		  // ! software watchdog to make sure continuous commands are received !
+
+//		  if (HAL_GetTick() - last_cmd_time > Command_WDT_Max_Time){
+//			  // software watchdog for teleop commands
+//			  if (!wdt_active){
+//
+//				  wdt_active = 1;
+//
+//				  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+//				  if (S1.homing_status) moveAngleAbsolute(&S1, 0, 30, &B1);
+//				  if (S2.homing_status) moveAngleAbsolute(&S2, 0, 30, &B2);
+//				  if (S3.homing_status) moveAngleAbsolute(&S3, 0, 30, &B3);
+//				  if (S4.homing_status) moveAngleAbsolute(&S4, 0, 30, &B4);
+//				  initWQueue(&S1.q); initWQueue(&S2.q); initWQueue(&S3.q); initWQueue(&S4.q);
+//			  }
+//		  }
+
+		  //if (!estop_active && !wdt_active){
+		  if (!estop_active){
+			  if(!S1.isMoving && !WisEmpty(&S1.q) && !S1.pending_preemption){
+				  Wrapper temp = dequeueW(&S1.q);
+				  moveAngleAbsolute(&S1, temp.degree, temp.rpm, &B1);
+			  }
+			  if(!S2.isMoving && !WisEmpty(&S2.q) && !S2.pending_preemption){
+				  Wrapper temp = dequeueW(&S2.q);
+				  moveAngleAbsolute(&S2, temp.degree, temp.rpm, &B2);
+			  }
+			  if(!S3.isMoving && !WisEmpty(&S3.q) && !S3.pending_preemption){
+				  Wrapper temp = dequeueW(&S3.q);
+				  moveAngleAbsolute(&S3, temp.degree, temp.rpm, &B3);
+			  }
+			  if(!S4.isMoving && !WisEmpty(&S4.q) && !S4.pending_preemption){
+				  Wrapper temp = dequeueW(&S4.q);
+				  moveAngleAbsolute(&S4, temp.degree, temp.rpm, &B4);
+			  }
 		  }
 
 			if (control_loop){
@@ -442,8 +510,8 @@ int main(void)
 		//		HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 5);
 				control_loop = 0;
 			}
-
 		  break;
+
 	  default:
 		  break;
 	  }
@@ -1260,17 +1328,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : POSSIBLE_ESTOP_Pin */
-  GPIO_InitStruct.Pin = POSSIBLE_ESTOP_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(POSSIBLE_ESTOP_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : S2_LIM_Pin */
-  GPIO_InitStruct.Pin = S2_LIM_Pin;
+  /*Configure GPIO pins : ESTOP_Pin S2_LIM_Pin */
+  GPIO_InitStruct.Pin = ESTOP_Pin|S2_LIM_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(S2_LIM_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
@@ -1290,32 +1352,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM6){
 		control_loop = 1;
 		return;
-//		if (cmd_count > 30) return;
-//
-//		c_angle += 5.0f;
-//
-//		if (c_angle >= 360.0f) {
-//		    c_angle -= 360.0f;
-//		    cmd_count++;
-//		}
-//
-//		float wrapped = clamp_deg_180_pos(c_angle);
-//
-//		enqueueW(&S1.q, (Wrapper){ wrapped, c_rpm });
-//		enqueueW(&S2.q, (Wrapper){ wrapped, c_rpm });
-//		enqueueW(&S3.q, (Wrapper){ wrapped, c_rpm });
-//		enqueueW(&S4.q, (Wrapper){ wrapped, c_rpm });
-
-
-		// stepper
-//		if (new_stepper_command == 1){
-//			if (!Stepper_IsMoving(&stepper_handle_BL)){
-//				angle_to_move = fabsf(stepper_target_angle);
-//				step_dir = (stepper_target_angle >= 0.0f) ? 0 : 1;
-//				Stepper_MoveAngle(&stepper_handle_BL, stepper_target_angle, 20.0f, step_dir);		// angle, 20 rpm, dir
-//				new_stepper_command = 0;
-//			}
-//		}
 	}
 	Stepper_Handle_t *s = NULL;
 
@@ -1366,6 +1402,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	    s->step_timer->Instance->EGR = TIM_EGR_UG;
 	    __HAL_TIM_CLEAR_FLAG(s->step_timer, TIM_FLAG_UPDATE);  // clear AFTER EGR
 
+	    // untested for estop:
+	    // If the EXTI E-stop fired while we were doing the math above, abort!
+		if (!s->isMoving) return;
+
 	    __HAL_TIM_ENABLE_IT(s->step_timer, TIM_IT_UPDATE);
 	    __HAL_TIM_ENABLE(s->step_timer);
 	}
@@ -1380,10 +1420,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	    //s->totalPulses = 0; //optional
 	    Stepper_Stop(s);
 	}
-
-//	if(htim->Instance == TIM17){
-//		Stepper_Timer_Callback(&stepper_handle_BL);
-//	}
 }
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
@@ -1451,7 +1487,23 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+
+	if (GPIO_Pin == ESTOP_Pin){
+		// noise filter: kyuki EMI = BT
+		if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_RESET) {
+			estop_active = 1;
+			b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+			PID_Reset(&pid_b1); PID_Reset(&pid_b2); PID_Reset(&pid_b3); PID_Reset(&pid_b4);
+
+			// following is removed because pressing estop mid-stepper rotation caused timer issues causing offset:
+
+//			Stepper_Stop(&S1); Stepper_Stop(&S2); Stepper_Stop(&S3); Stepper_Stop(&S4);
+//			initWQueue(&S1.q); initWQueue(&S2.q); initWQueue(&S3.q); initWQueue(&S4.q);
+		}
+	}
+
 	current_debounce_time = HAL_GetTick();
+
 	if (GPIO_Pin == S1_LIM_Pin){ 						// stepper 1
 		if (S1.homing_status) return; //if already homed, do nothing
 		if (current_debounce_time - last_debounce_time[0] > DEBOUNCE_TIME_PERIOD){
