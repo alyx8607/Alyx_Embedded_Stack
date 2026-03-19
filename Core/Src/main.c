@@ -425,8 +425,8 @@ int main(void)
 		  // E-stop provisions
 		  if (estop_active) {
 			  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
-			  // Step 1: Preempt normal movements so they cleanly stop and calculate exact absolute angles.
-				// We only do this if we haven't already started the return-to-zero sequence.
+			  	// preempt normal movements so they cleanly stop and calculate exact absolute angles
+				// we only do this if we haven't already started the return-to-zero sequence
 				if (!estop_action_done) {
 					if (S1.isMoving) S1.pending_preemption = 1;
 					if (S2.isMoving) S2.pending_preemption = 1;
@@ -434,7 +434,7 @@ int main(void)
 					if (S4.isMoving) S4.pending_preemption = 1;
 				}
 
-				// Step 2: Once steppers naturally halt and update their angles, trigger zeroing
+				// once steppers naturally halt and update their angles, trigger zeroing
 				if (!S1.isMoving && !S2.isMoving && !S3.isMoving && !S4.isMoving) {
 				  if (!estop_action_done) {
 					  estop_action_done = 1;
