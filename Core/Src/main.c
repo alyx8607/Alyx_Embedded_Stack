@@ -432,6 +432,12 @@ int main(void)
 					if (S2.isMoving) S2.pending_preemption = 1;
 					if (S3.isMoving) S3.pending_preemption = 1;
 					if (S4.isMoving) S4.pending_preemption = 1;
+
+					// yaw-estop-yaw fails the motordriver.c check for lastInstruct because last is still yaw angle so gets skipped
+					S1.lastInstruct.degree = 0;
+					S2.lastInstruct.degree = 0;
+					S3.lastInstruct.degree = 0;
+					S4.lastInstruct.degree = 0;
 				}
 
 				// once steppers naturally halt and update their angles, trigger zeroing
