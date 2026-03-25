@@ -90,9 +90,7 @@ TIM_HandleTypeDef htim20;
 
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart2;
-UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_uart5_rx;
-DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
 // Encoder + RPM vars
@@ -144,17 +142,6 @@ volatile uint32_t last_error;
 volatile uint8_t estop_active = 0;
 volatile uint8_t estop_action_done = 0;
 
-volatile uint8_t bpill_rx_buf[3];
-volatile uint32_t last_bpill_hearbeat = 0;		// for software watchdog
-uint8_t bpill_rx_byte;          // Buffer for 1 byte
-volatile uint8_t bpill_rx_state = 0;
-uint8_t bpill_sync_state = 0;   // Keeps track of where we are in the packet
-uint8_t test1 = 0;
-uint8_t test2 = 0;
-volatile uint8_t uarterror = 0;
-volatile uint32_t uarterror3_error;
-//uint8_t caveman_rx_buf[3];
-
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
@@ -176,7 +163,6 @@ static void MX_TIM20_Init(void);
 static void MX_UART5_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -223,17 +209,17 @@ static inline float clamp_deg_180_pos(float a)
 }
 
 typedef enum {
-	MODE_ESTOP = 0x00,
-	MODE_HOMING = 0x01,
-	MODE_TELEOP = 0x02,
-	MODE_AUTONAV = 0x03,
-	MODE_SELFDRIVE = 0x04,
-	MODE_IDLE = 0x05
+	ESTOP = 0,
+	HOMING,
+	TELEOP,
+	AUTONAV,
+	SELFDRIVE,
+	IDLE
 } MODES;
 
 float angles[4] = {180.00f*5, 90.00f*5, 30.00f*5, 90.00f*5};
 uint8_t i = 0;
-MODES mode = MODE_HOMING;
+MODES mode = HOMING;
 
 //float map_rpm_to_signal(float rpm) {
 //
@@ -293,7 +279,6 @@ int main(void)
   MX_UART5_Init();
   MX_TIM16_Init();
   MX_USART2_UART_Init();
-  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   PID_Create(&pid_b1, current_kp, current_ki, current_kd, CTRL_Loop_Period);
   PID_Create(&pid_b2, current_kp, current_ki, current_kd, CTRL_Loop_Period);
@@ -368,8 +353,6 @@ int main(void)
 
   //HAL_UART_Receive_IT(&huart5, &rx_byte, 1); // for incoming ros commands
   HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);	// for incoming ros commands
-  HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);					// listen to black pill for mode instructions
-  //HAL_UART_Receive_IT(&huart2, caveman_rx_buf, 3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -380,15 +363,10 @@ int main(void)
   S4.homing_status = 0;
   while (1)
   {
-//	  if ((HAL_GetTick() - last_bpill_hearbeat) > 500){
-//		  mode = MODE_ESTOP;
-//		  estop_active = 1;
-//	  }
-
-	  if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
+	  if (mode == IDLE) mode = TELEOP; //forcing teleop instead of idle for now, will change when switches.
 	  switch(mode){
 
-	  case MODE_HOMING:
+	  case HOMING:
 
 		  if(S1.correctOffset == 1){
 			  moveAngle(&S1, -S1.limSwitchOffset, 30);
@@ -411,18 +389,18 @@ int main(void)
 			  moveAngle(&S1, -360, 10);
 		  }
 		  if(!S2.homing_status && !S2.isMoving && !S2.totalPulses){
-			  moveAngle(&S2, -360, 10);
-		  }
+		  			  moveAngle(&S2, -360, 10);
+		  		  }
 		  if(!S3.homing_status && !S3.isMoving && !S3.totalPulses){
-			  moveAngle(&S3, -360, 10);
-		  }
+		  			  moveAngle(&S3, -360, 10);
+		  		  }
 		  if(!S4.homing_status && !S4.isMoving && !S4.totalPulses){
-			  moveAngle(&S4, -360, 10);
-		  }
-		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = MODE_IDLE;
+		  			  moveAngle(&S4, -360, 10);
+		  		  }
+		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = IDLE;
 		  break;
 
-	  case MODE_TELEOP:
+	  case TELEOP:
 
 		  if (estop_active){
 			  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET){
@@ -438,6 +416,8 @@ int main(void)
 				handle_command(main_cmd_buf);
 			}
 		  }
+
+
 
 		  // so that new parsing doesnt parse P.A.I.N (bas failsafe in case estop press ke baad bhi instructions aa rahe he)
 		  // oh also - FUCK EMI
@@ -1277,54 +1257,6 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART3_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART3_Init 0 */
-
-  /* USER CODE END USART3_Init 0 */
-
-  /* USER CODE BEGIN USART3_Init 1 */
-
-  /* USER CODE END USART3_Init 1 */
-  huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
-  huart3.Init.WordLength = UART_WORDLENGTH_8B;
-  huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
-  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart3.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart3, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart3, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART3_Init 2 */
-
-  /* USER CODE END USART3_Init 2 */
-
-}
-
-/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -1338,9 +1270,6 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  /* DMA1_Channel2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
@@ -1501,7 +1430,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-	// ROS UART
     if (huart->Instance == UART5)
     {
     	static uint16_t old_pos = 0;
@@ -1547,43 +1475,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == USART2)
-        {
-
-    	switch (bpill_rx_state) {
-			case 0: // Hunting for the Header
-				if (bpill_rx_byte == 0xAA) {
-					bpill_rx_buf[0] = bpill_rx_byte;
-					bpill_rx_state = 1; // Move to next state
-				}
-				break;
-
-			case 1: // Catching the Mode Data
-				bpill_rx_buf[1] = bpill_rx_byte;
-				bpill_rx_state = 2; // Move to next state
-				break;
-
-			case 2: // Catching and Verifying the Checksum
-				bpill_rx_buf[2] = bpill_rx_byte;
-				bpill_rx_state = 0; // Reset state machine for the next packet
-
-				// Mathematically verify the checksum
-				uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
-
-				if (bpill_rx_buf[2] == expected_checksum) {
-					// Packet is perfect! Apply the data.
-					mode = bpill_rx_buf[1];
-				}
-				break;
-		}
-
-			// Re-arm the interrupt to catch the next single byte
-			HAL_UART_Receive_IT(huart, &bpill_rx_byte, 1);
-        }
-}
-
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 	if (huart->Instance == UART5){
 
@@ -1598,19 +1489,6 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 		// restart UART DMA
 		HAL_UART_AbortReceive(huart);
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
-	}
-
-	else if (huart->Instance == USART2){
-		// clear flags at error for the Black Pill link
-		uarterror++;
-		uarterror3_error = huart->ErrorCode;
-		__HAL_UART_CLEAR_OREFLAG(huart);
-		__HAL_UART_CLEAR_NEFLAG(huart);
-		__HAL_UART_CLEAR_FEFLAG(huart);
-
-		// restart the 1-byte interrupt listener
-		HAL_UART_AbortReceive(huart);
-		HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);
 	}
 }
 
