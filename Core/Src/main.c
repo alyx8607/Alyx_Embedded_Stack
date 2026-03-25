@@ -385,8 +385,12 @@ int main(void)
 //		  estop_active = 1;
 //	  }
 
-	  if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
+	  //if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
 	  switch(mode){
+
+	  case MODE_IDLE:
+
+		  break;
 
 	  case MODE_HOMING:
 
@@ -1553,33 +1557,29 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         {
 
     	switch (bpill_rx_state) {
-			case 0: // Hunting for the Header
+			case 0:		// look for header
 				if (bpill_rx_byte == 0xAA) {
 					bpill_rx_buf[0] = bpill_rx_byte;
-					bpill_rx_state = 1; // Move to next state
+					bpill_rx_state = 1;
 				}
 				break;
 
-			case 1: // Catching the Mode Data
+			case 1:		// get which mode bot is in
 				bpill_rx_buf[1] = bpill_rx_byte;
-				bpill_rx_state = 2; // Move to next state
+				bpill_rx_state = 2;
 				break;
 
-			case 2: // Catching and Verifying the Checksum
+			case 2:		// verify checksum
 				bpill_rx_buf[2] = bpill_rx_byte;
-				bpill_rx_state = 0; // Reset state machine for the next packet
-
-				// Mathematically verify the checksum
+				bpill_rx_state = 0;
+				// get actual checksum value
 				uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
-
 				if (bpill_rx_buf[2] == expected_checksum) {
-					// Packet is perfect! Apply the data.
-					mode = bpill_rx_buf[1];
+					mode = bpill_rx_buf[1];					// apply mode if checksum is correct
 				}
 				break;
 		}
-
-			// Re-arm the interrupt to catch the next single byte
+			// re-arm interrupt for next byte
 			HAL_UART_Receive_IT(huart, &bpill_rx_byte, 1);
         }
 }
