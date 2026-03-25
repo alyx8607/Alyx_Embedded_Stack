@@ -234,8 +234,6 @@ typedef enum {
 float angles[4] = {180.00f*5, 90.00f*5, 30.00f*5, 90.00f*5};
 uint8_t i = 0;
 MODES mode = MODE_HOMING;
-uint8_t last_sent_mode = 255;
-uint8_t sending_mode = 0;
 
 //float map_rpm_to_signal(float rpm) {
 //
@@ -386,13 +384,6 @@ int main(void)
 //		  mode = MODE_ESTOP;
 //		  estop_active = 1;
 //	  }
-
-	  // sending mode to shubh
-	  if (last_sent_mode != mode){
-		  HAL_UART_Transmit(&huart5, (uint8_t)bpill_rx_buf, 3, 10);
-		  sending_mode++;
-		  last_sent_mode = mode;
-	  }
 
 	  //if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
 	  switch(mode){
@@ -1585,16 +1576,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
 				if (bpill_rx_buf[2] == expected_checksum) {
 					mode = bpill_rx_buf[1];					// apply mode if checksum is correct
-					if (mode == MODE_HOMING){
-						  S1.homing_status = 0;
-						  S2.homing_status = 0;
-						  S3.homing_status = 0;
-						  S4.homing_status = 0;
-						  S1.correctOffset = 0;
-						  S2.correctOffset = 0;
-						  S3.correctOffset = 0;
-						  S4.correctOffset = 0;
-					}
 				}
 				break;
 		}
