@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 ../Core/Src/main.c:172:6:TIM6_SetPeriod_us	2
 ../Core/Src/main.c:186:6:DWT_Init	1
 ../Core/Src/main.c:195:6:delay_us	2
@@ -22,3 +23,31 @@
 ../Core/Src/main.c:1476:6:HAL_UART_ErrorCallback	2
 ../Core/Src/main.c:1493:6:HAL_GPIO_EXTI_Callback	15
 ../Core/Src/main.c:1553:6:Error_Handler	1
+=======
+../Core/Src/main.c:186:6:TIM6_SetPeriod_us	2
+../Core/Src/main.c:200:6:DWT_Init	1
+../Core/Src/main.c:209:6:delay_us	2
+../Core/Src/main.c:261:5:main	63
+../Core/Src/main.c:569:6:SystemClock_Config	3
+../Core/Src/main.c:615:13:MX_TIM1_Init	3
+../Core/Src/main.c:666:13:MX_TIM2_Init	3
+../Core/Src/main.c:715:13:MX_TIM3_Init	7
+../Core/Src/main.c:776:13:MX_TIM4_Init	3
+../Core/Src/main.c:825:13:MX_TIM6_Init	3
+../Core/Src/main.c:863:13:MX_TIM8_Init	3
+../Core/Src/main.c:914:13:MX_TIM15_Init	6
+../Core/Src/main.c:984:13:MX_TIM16_Init	6
+../Core/Src/main.c:1051:13:MX_TIM17_Init	6
+../Core/Src/main.c:1118:13:MX_TIM20_Init	6
+../Core/Src/main.c:1194:13:MX_UART5_Init	5
+../Core/Src/main.c:1242:13:MX_USART2_UART_Init	5
+../Core/Src/main.c:1290:13:MX_USART3_UART_Init	5
+../Core/Src/main.c:1336:13:MX_DMA_Init	1
+../Core/Src/main.c:1358:13:MX_GPIO_Init	1
+../Core/Src/main.c:1433:6:HAL_TIM_PeriodElapsedCallback	14
+../Core/Src/main.c:1508:6:HAL_UARTEx_RxEventCallback	7
+../Core/Src/main.c:1556:6:HAL_UART_RxCpltCallback	15
+../Core/Src/main.c:1611:6:HAL_UART_ErrorCallback	3
+../Core/Src/main.c:1641:6:HAL_GPIO_EXTI_Callback	19
+../Core/Src/main.c:1701:6:Error_Handler	1
+>>>>>>> Stashed changes

@@ -219,7 +219,14 @@ typedef enum {
 
 float angles[4] = {180.00f*5, 90.00f*5, 30.00f*5, 90.00f*5};
 uint8_t i = 0;
+<<<<<<< Updated upstream
 MODES mode = HOMING;
+=======
+MODES mode = MODE_HOMING;
+MODES prev_rec_mode = MODE_IDLE, rec_mode = MODE_IDLE;
+uint8_t last_sent_mode = 255;
+uint8_t sending_mode = 0;
+>>>>>>> Stashed changes
 
 //float map_rpm_to_signal(float rpm) {
 //
@@ -365,9 +372,15 @@ int main(void)
   {
 	  if (mode == IDLE) mode = TELEOP; //forcing teleop instead of idle for now, will change when switches.
 	  switch(mode){
+<<<<<<< Updated upstream
 
 	  case HOMING:
 
+=======
+	  case MODE_IDLE:
+		  break;
+	  case MODE_HOMING:
+>>>>>>> Stashed changes
 		  if(S1.correctOffset == 1){
 			  moveAngle(&S1, -S1.limSwitchOffset, 30);
 			  S1.correctOffset = 2;
@@ -399,16 +412,19 @@ int main(void)
 		  		  }
 		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = IDLE;
 		  break;
+<<<<<<< Updated upstream
 
 	  case TELEOP:
 
+=======
+	  case MODE_TELEOP:
+>>>>>>> Stashed changes
 		  if (estop_active){
 			  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET){
 				  estop_active = 0;
 				  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
 			  }
 		  }
-
 		  if (uart_data_ready) {
 			uart_data_ready = 0;
 			if (!estop_active){
@@ -416,7 +432,6 @@ int main(void)
 				handle_command(main_cmd_buf);
 			}
 		  }
-
 		  // so that new parsing doesnt parse P.A.I.N (bas failsafe in case estop press ke baad bhi instructions aa rahe he)
 		  // oh also - FUCK EMI
 
@@ -1473,6 +1488,64 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
+<<<<<<< Updated upstream
+=======
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART2)
+        {
+
+    	switch (bpill_rx_state) {
+			case 0:		// look for header
+				if (bpill_rx_byte == 0xAA) {
+					bpill_rx_buf[0] = bpill_rx_byte;
+					bpill_rx_state = 1;
+				}
+				break;
+
+			case 1:		// get which mode bot is in
+				bpill_rx_buf[1] = bpill_rx_byte;
+				bpill_rx_state = 2;
+				break;
+
+			case 2:		// verify checksum
+				bpill_rx_buf[2] = bpill_rx_byte;
+				bpill_rx_state = 0;
+				// get actual checksum value
+				uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
+				if (bpill_rx_buf[2] == expected_checksum) {
+					if (mode == MODE_HOMING && !(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status)){
+						mode = MODE_HOMING;
+						break;
+					}
+					prev_rec_mode = rec_mode;
+					rec_mode = bpill_rx_buf[1];					// apply mode if checksum is correct
+					if (rec_mode == MODE_HOMING && prev_rec_mode != MODE_HOMING){
+						Stepper_Stop(&S1); Stepper_Stop(&S2);
+						Stepper_Stop(&S3); Stepper_Stop(&S4);
+						S1.totalPulses = 0;
+						S2.totalPulses = 0;
+						S3.totalPulses = 0;
+						S4.totalPulses = 0;
+						S1.homing_status = 0;
+						S2.homing_status = 0;
+						S3.homing_status = 0;
+						S4.homing_status = 0;
+						S1.correctOffset = 0;
+						S2.correctOffset = 0;
+						S3.correctOffset = 0;
+						S4.correctOffset = 0;
+					}
+				}
+				mode = rec_mode;
+				break;
+		}
+			// re-arm interrupt for next byte
+			HAL_UART_Receive_IT(huart, &bpill_rx_byte, 1);
+        }
+}
+
+>>>>>>> Stashed changes
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 	if (huart->Instance == UART5){
 
@@ -1509,7 +1582,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	current_debounce_time = HAL_GetTick();
 
 	if (GPIO_Pin == S1_LIM_Pin){ 						// stepper 1
-		if (S1.homing_status) return; //if already homed, do nothing
+		if (S1.homing_status || S1.correctOffset == 2) return; //if already homed, do nothing
 		if (current_debounce_time - last_debounce_time[0] > DEBOUNCE_TIME_PERIOD){
 			last_debounce_time[0] = current_debounce_time;
 			Stepper_Stop(&S1);
@@ -1517,7 +1590,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		}
 	}
 	if (GPIO_Pin == S2_LIM_Pin){						// stepper 2
-		if (S2.homing_status) return; //if already homed, do nothing
+		if (S2.homing_status || S2.correctOffset == 2) return; //if already homed, do nothing
 		if (current_debounce_time - last_debounce_time[1] > DEBOUNCE_TIME_PERIOD){
 			last_debounce_time[1] = current_debounce_time;
 			Stepper_Stop(&S2);
@@ -1526,7 +1599,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		}
 	}
 	if (GPIO_Pin == S3_LIM_Pin){						// stepper 3
-		if (S3.homing_status) return;//if already homed, do nothing
+		if (S3.homing_status || S3.correctOffset == 2) return;//if already homed, do nothing
 		if (current_debounce_time - last_debounce_time[2] > DEBOUNCE_TIME_PERIOD){
 			last_debounce_time[2] = current_debounce_time;
 			Stepper_Stop(&S3);
@@ -1534,7 +1607,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		}
 	}
 	if (GPIO_Pin == S4_LIM_Pin){						// stepper 4
-		if (S4.homing_status) return; //if already homed, do nothing
+		if (S4.homing_status || S4.correctOffset == 2) return; //if already homed, do nothing
 		if (current_debounce_time - last_debounce_time[3] > DEBOUNCE_TIME_PERIOD){
 			last_debounce_time[3] = current_debounce_time;
 			Stepper_Stop(&S4);

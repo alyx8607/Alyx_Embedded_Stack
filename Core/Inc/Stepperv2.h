@@ -51,7 +51,7 @@ typedef struct{
 	volatile int8_t dir; //-1->forward direction, 1->backward direction
 	float step_accum; //for preventing rounding off errors
 	Wrapper lastInstruct;
-	uint64_t totalPulses;
+	uint64_t totalPulses; //total pulses sent since last homed
 
 	//Absolute angle stuff
 	long abs_step_count;

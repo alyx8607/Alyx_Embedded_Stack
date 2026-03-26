@@ -119,8 +119,14 @@ NVIC.TIM1_TRG_COM_TIM17_IRQn=true\:1\:0\:true\:false\:true\:true\:true\:true
 NVIC.TIM1_UP_TIM16_IRQn=true\:1\:0\:true\:false\:true\:true\:true\:true
 NVIC.TIM20_UP_IRQn=true\:1\:0\:true\:false\:true\:true\:true\:true
 NVIC.TIM6_DAC_IRQn=true\:5\:0\:true\:false\:true\:true\:true\:true
+<<<<<<< Updated upstream
 NVIC.UART5_IRQn=true\:1\:0\:true\:false\:true\:true\:true\:true
 NVIC.USART2_IRQn=true\:1\:0\:true\:false\:true\:true\:true\:true
+=======
+NVIC.UART5_IRQn=true\:3\:0\:true\:false\:true\:true\:true\:true
+NVIC.USART2_IRQn=true\:3\:0\:true\:false\:true\:true\:true\:true
+NVIC.USART3_IRQn=true\:0\:0\:false\:false\:true\:true\:true\:true
+>>>>>>> Stashed changes
 NVIC.UsageFault_IRQn=true\:0\:0\:false\:false\:true\:false\:false\:false
 PA0.GPIOParameters=GPIO_Label
 PA0.GPIO_Label=E2_A
