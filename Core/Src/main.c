@@ -417,8 +417,6 @@ int main(void)
 			}
 		  }
 
-
-
 		  // so that new parsing doesnt parse P.A.I.N (bas failsafe in case estop press ke baad bhi instructions aa rahe he)
 		  // oh also - FUCK EMI
 
