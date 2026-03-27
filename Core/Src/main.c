@@ -142,6 +142,12 @@ volatile uint32_t last_error;
 volatile uint8_t estop_active = 0;
 volatile uint8_t estop_action_done = 0;
 
+volatile uint8_t bpill_rx_buf[3];
+volatile uint32_t last_bpill_hearbeat = 0;		// for software watchdog
+uint8_t bpill_rx_byte;          // Buffer for 1 byte
+volatile uint8_t bpill_rx_state = 0;
+uint8_t bpill_sync_state = 0;   // Keeps track of where we are in the packet
+
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
@@ -209,24 +215,20 @@ static inline float clamp_deg_180_pos(float a)
 }
 
 typedef enum {
-	ESTOP = 0,
-	HOMING,
-	TELEOP,
-	AUTONAV,
-	SELFDRIVE,
-	IDLE
+	MODE_ESTOP = 0x00,
+	MODE_HOMING = 0x01,
+	MODE_TELEOP = 0x02,
+	MODE_AUTONAV = 0x03,
+	MODE_SELFDRIVE = 0x04,
+	MODE_IDLE = 0x05
 } MODES;
 
 float angles[4] = {180.00f*5, 90.00f*5, 30.00f*5, 90.00f*5};
 uint8_t i = 0;
-<<<<<<< Updated upstream
-MODES mode = HOMING;
-=======
 MODES mode = MODE_HOMING;
 MODES prev_rec_mode = MODE_IDLE, rec_mode = MODE_IDLE;
 uint8_t last_sent_mode = 255;
 uint8_t sending_mode = 0;
->>>>>>> Stashed changes
 
 //float map_rpm_to_signal(float rpm) {
 //
@@ -358,8 +360,8 @@ int main(void)
   //HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3); // B4
   HAL_TIM_Base_Start_IT(&htim6);	//scheduling interrupts
 
-  //HAL_UART_Receive_IT(&huart5, &rx_byte, 1); // for incoming ros commands
   HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);	// for incoming ros commands
+  HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);					// listen to black pill for mode instructions
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -370,17 +372,29 @@ int main(void)
   S4.homing_status = 0;
   while (1)
   {
-	  if (mode == IDLE) mode = TELEOP; //forcing teleop instead of idle for now, will change when switches.
+
+	  // sending mode to shubh
+	  if (last_sent_mode != mode){
+		  HAL_UART_Transmit(&huart5, (uint8_t)bpill_rx_buf, 3, 10);
+		  sending_mode++;		// remove after testing
+		  last_sent_mode = mode;
+	  }
+
+//	  // software watchdog for bpill instructions (can't use rn because of keybaord teleop node
+//	  if ((HAL_GetTick() - last_bpill_hearbeat) > 500){
+//		  mode = MODE_ESTOP;
+//		  estop_active = 1;
+//	  }
+
+	  //if (mode == IDLE) mode = TELEOP; //forcing teleop instead of idle for now, will change when switches.
+
 	  switch(mode){
-<<<<<<< Updated upstream
 
-	  case HOMING:
-
-=======
 	  case MODE_IDLE:
 		  break;
+
 	  case MODE_HOMING:
->>>>>>> Stashed changes
+
 		  if(S1.correctOffset == 1){
 			  moveAngle(&S1, -S1.limSwitchOffset, 30);
 			  S1.correctOffset = 2;
@@ -412,19 +426,16 @@ int main(void)
 		  		  }
 		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = IDLE;
 		  break;
-<<<<<<< Updated upstream
 
-	  case TELEOP:
-
-=======
 	  case MODE_TELEOP:
->>>>>>> Stashed changes
+
 		  if (estop_active){
 			  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET){
 				  estop_active = 0;
 				  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
 			  }
 		  }
+
 		  if (uart_data_ready) {
 			uart_data_ready = 0;
 			if (!estop_active){
@@ -1488,8 +1499,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
-<<<<<<< Updated upstream
-=======
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART2)
@@ -1545,7 +1554,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         }
 }
 
->>>>>>> Stashed changes
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 	if (huart->Instance == UART5){
 
@@ -1560,6 +1568,19 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 		// restart UART DMA
 		HAL_UART_AbortReceive(huart);
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
+	}
+
+	else if (huart->Instance == USART2){
+		// clear flags at error for the bpill link
+		uarterror++;
+		uarterror3_error = huart->ErrorCode;
+		__HAL_UART_CLEAR_OREFLAG(huart);
+		__HAL_UART_CLEAR_NEFLAG(huart);
+		__HAL_UART_CLEAR_FEFLAG(huart);
+
+		// restart the 1-byte interrupt listener
+		HAL_UART_AbortReceive(huart);
+		HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);
 	}
 }
 
