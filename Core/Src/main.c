@@ -136,6 +136,8 @@ char main_cmd_buf[128];                 // The CPU parses this in the while(1) l
 // UART stop waala error (YOU ARE T) lololol
 volatile uint8_t error_entered = 0;
 volatile uint32_t last_error;
+volatile uint8_t uarterror = 0;
+volatile uint32_t uarterror3_error;
 
 //uint32_t last_cmd_time = 0;
 //volatile uint8_t wdt_active = 0; // indicate teleop watchdog has taken control
@@ -147,6 +149,7 @@ volatile uint32_t last_bpill_hearbeat = 0;		// for software watchdog
 uint8_t bpill_rx_byte;          // Buffer for 1 byte
 volatile uint8_t bpill_rx_state = 0;
 uint8_t bpill_sync_state = 0;   // Keeps track of where we are in the packet
+uint8_t bpill_tx_buf[3];
 
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
@@ -375,7 +378,10 @@ int main(void)
 
 	  // sending mode to shubh
 	  if (last_sent_mode != mode){
-		  HAL_UART_Transmit(&huart5, (uint8_t)bpill_rx_buf, 3, 10);
+		  bpill_tx_buf[0] = 0xAA;
+		  bpill_tx_buf[1] = (uint8_t)mode;
+		  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
+		  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
 		  sending_mode++;		// remove after testing
 		  last_sent_mode = mode;
 	  }
@@ -424,8 +430,12 @@ int main(void)
 		  if(!S4.homing_status && !S4.isMoving && !S4.totalPulses){
 		  			  moveAngle(&S4, -360, 10);
 		  		  }
-		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = IDLE;
+		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = MODE_IDLE;
 		  break;
+
+	  case MODE_AUTONAV:
+
+	  case MODE_SELFDRIVE:
 
 	  case MODE_TELEOP:
 
