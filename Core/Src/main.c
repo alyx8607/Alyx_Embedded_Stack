@@ -392,7 +392,7 @@ int main(void)
 //		  estop_active = 1;
 //	  }
 
-	  //if (mode == IDLE) mode = TELEOP; //forcing teleop instead of idle for now, will change when switches.
+	  if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
 
 	  switch(mode){
 
