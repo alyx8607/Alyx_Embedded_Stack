@@ -49,7 +49,8 @@
 //#define Stepper_Motor_Steps_Per_Rev 1600
 #define Stepper_Steps_Per_Rev (Stepper_Motor_Steps_Per_Rev * Stepper_Microsteps)
 #define rx_buf_size 64
-#define feedback_buf_size 64
+#define feedback_buf_size 512
+#define feedback_transmission_freq 200
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -132,6 +133,7 @@ uint8_t feedback_buf[feedback_buf_size];
 volatile uint8_t uart_data_ready = 0;
 uint8_t shadow_rx_buf[rx_buf_size * 2]; // This is the CPU's private copy: large to hold accumulations
 char main_cmd_buf[128];                 // The CPU parses this in the while(1) loop
+uint32_t lastTransmissionTime = 0;
 
 // UART stop waala error (YOU ARE T) lololol
 volatile uint8_t error_entered = 0;
@@ -310,10 +312,10 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -98, -127, -94);	// -99
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -96, -127, -94);	// -99
   Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -120, -86);	// -92
-  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -96.5, -125, -90);	// -95
-  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94.5, -123, -90);	// -94
+  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -92.5, -125, -90);	// -95
+  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -91.5, -123, -90);	// -94
 
   initTimer(&S1);
   initTimer(&S2);
@@ -377,14 +379,6 @@ int main(void)
   {
 
 	  // sending mode to shubh
-	  if (last_sent_mode != mode){
-		  bpill_tx_buf[0] = 0xAA;
-		  bpill_tx_buf[1] = (uint8_t)mode;
-		  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
-		  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
-		  sending_mode++;		// remove after testing
-		  last_sent_mode = mode;
-	  }
 
 //	  // software watchdog for bpill instructions (can't use rn because of keybaord teleop node
 //	  if ((HAL_GetTick() - last_bpill_hearbeat) > 500){
@@ -543,11 +537,22 @@ int main(void)
 				b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? -b4_target_rpm : b4_target_rpm, b4_current_rpm);
 				Motor_SetOutput(&B4, b4_control_signal);
 
-		//		int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
-		//								   "@S%ld,%ld,%ld,%ld!\r\n",
-		//								   S1.abs_step_count, S2.abs_step_count,
-		//								   S3.abs_step_count, S4.abs_step_count);
-		//		HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 5);
+				if (HAL_GetTick() - lastTransmissionTime >= 1000/feedback_transmission_freq){
+					 if (last_sent_mode != mode){
+						  bpill_tx_buf[0] = 0xAA;
+						  bpill_tx_buf[1] = (uint8_t)mode;
+						  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
+						  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+						  sending_mode++;		// remove after testing
+						  last_sent_mode = mode;
+					 }
+					int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
+										   "@S1%ld;S2%ld;S3%ld;S4%ld;B1%.4f;B2%.4f;B3%.4f;B4%.4f;\r\n",
+										   S1.abs_step_count, S2.abs_step_count, S3.abs_step_count, S4.abs_step_count,
+										   Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2), Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4));
+					lastTransmissionTime += 1000/feedback_transmission_freq;
+					HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 10);
+				}
 				control_loop = 0;
 			}
 		  break;
