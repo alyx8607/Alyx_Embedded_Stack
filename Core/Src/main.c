@@ -92,6 +92,7 @@ TIM_HandleTypeDef htim20;
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_uart5_rx;
+DMA_HandleTypeDef hdma_uart5_tx;
 
 /* USER CODE BEGIN PV */
 // Encoder + RPM vars
@@ -156,6 +157,10 @@ uint8_t bpill_tx_buf[3];
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
+
+
+volatile uint8_t uart_tx_ready = 1;
+int flag = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -543,20 +548,26 @@ int main(void)
 						  bpill_tx_buf[1] = (uint8_t)mode;
 						  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
 						  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
-						  sending_mode++;		// remove after testing
+						  //sending_mode++;		// remove after testing
 						  last_sent_mode = mode;
 					 }
-					int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
-										   "@S1%ld;S2%ld;S3%ld;S4%ld;B1%.4f;B2%.4f;B3%.4f;B4%.4f;\r\n",
-										   S1.abs_step_count, S2.abs_step_count, S3.abs_step_count, S4.abs_step_count,
-										   Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2), Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4));
-					lastTransmissionTime += 1000/feedback_transmission_freq;
-					HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 10);
-				}
+					 if (uart_tx_ready)
+					 {
+					     uart_tx_ready = 0;
+
+					     int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
+					                            "@S1%ld;S2%ld;S3%ld;S4%ld;B1%.4f;B2%.4f;B3%.4f;B4%.4f;\r\n",
+					                            S1.abs_step_count, S2.abs_step_count,
+					                            S3.abs_step_count, S4.abs_step_count,
+					                            Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2),
+					                            Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4));
+
+					     HAL_UART_Transmit_DMA(&huart5, feedback_buf, tel_len);
+					 }
 				control_loop = 0;
 			}
 		  break;
-
+			}
 	  default:
 		  break;
 	  }
@@ -1309,6 +1320,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
@@ -1567,6 +1581,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 			// re-arm interrupt for next byte
 			HAL_UART_Receive_IT(huart, &bpill_rx_byte, 1);
         }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == UART5)
+    {
+        uart_tx_ready = 1;
+    }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
