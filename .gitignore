@@ -1,0 +1,57 @@
+############################################
+# 🔧 Build artifacts (always ignore)
+############################################
+Debug/
+Release/
+Binaries/
+
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+
+############################################
+# 🧠 STM32CubeIDE / Eclipse junk
+############################################
+.settings/
+.metadata/
+*.launch
+
+# Optional (KEEP if sharing project configs across team)
+# .project
+# .cproject
+
+############################################
+# 🧾 Logs & temp files
+############################################
+*.log
+
+############################################
+# 💻 OS-generated files
+############################################
+.DS_Store
+Thumbs.db
+
+############################################
+# ⚙️ Toolchain / cache garbage
+############################################
+*.su
+*.cyclo
+*.tmp
+
+############################################
+# 🔥 Optional: CubeMX generated backups
+############################################
+*.bak
+*.old
+
+############################################
+# 🚫 DO NOT IGNORE THESE (IMPORTANT)
+############################################
+# Core/
+# Drivers/
+# *.ioc
+# *.ld   (if you modified linker scripts)
