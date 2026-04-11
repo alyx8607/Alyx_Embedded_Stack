@@ -556,11 +556,16 @@ int main(void)
 					     uart_tx_ready = 0;
 
 					     int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
-					                            "@S1%ld;S2%ld;S3%ld;S4%ld;B1%.4f;B2%.4f;B3%.4f;B4%.4f;\r\n",
+					                            "@S1%ld;S2%ld;S3%ld;S4%ld;"
+					                            //"B1%.4f;B2%.4f;B3%.4f;B4%.4f;"
+					                            "B1%d;B2%d;B3%d;B4%d;\r\n",
 					                            S1.abs_step_count, S2.abs_step_count,
 					                            S3.abs_step_count, S4.abs_step_count,
-					                            Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2),
-					                            Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4));
+					                            //Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2),
+					                            //Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4)
+												b1_target_rpm, b2_target_rpm,
+												b3_target_rpm, b4_target_rpm);
+
 
 					     HAL_UART_Transmit_DMA(&huart5, feedback_buf, tel_len);
 					 }
