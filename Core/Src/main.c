@@ -51,6 +51,10 @@
 #define rx_buf_size 64
 #define feedback_buf_size 512
 #define feedback_transmission_freq 200
+
+#define CMD_KILL         0x00
+#define CMD_ARM          0x11
+#define CMD_FORCE_MODE   0x22
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -240,6 +244,17 @@ MODES prev_rec_mode = MODE_IDLE, rec_mode = MODE_IDLE;
 uint8_t last_sent_mode = 255;
 uint8_t sending_mode = 0;
 
+void Send_Blackpill_Command (uint8_t cmd, uint8_t seq){
+	static uint8_t tx_pkt[4];
+	tx_pkt[0] = 0xAA;	// Header
+	tx_pkt[1] = cmd;	// Command
+	tx_pkt[2] = seq;	// Sequence
+	tx_pkt[3] = tx_pkt[0] ^ tx_pkt[1] ^ tx_pkt[2];	// Checksum
+
+	// Maybe put this on IT or DMA?
+	HAL_UART_Transmit(&huart2, tx_pkt, 4, 10);		// Transmit to BlackPIll on UART2
+}
+
 //float map_rpm_to_signal(float rpm) {
 //
 //    if (rpm > 100.0f) return 0.8f;
@@ -317,10 +332,10 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -96, -127, -94);	// -99
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -120, -86);	// -92
-  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -92.5, -125, -90);	// -95
-  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -91.5, -123, -90);	// -94
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94.5, -127, -94);	// -99
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95, -120, -86);	// -92
+  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94.5, -125, -90);	// -95
+  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -123, -90);	// -94
 
   initTimer(&S1);
   initTimer(&S2);
@@ -391,11 +406,13 @@ int main(void)
 //		  estop_active = 1;
 //	  }
 
+	  // remove the force after introducing mode switch
 	  if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
 
 	  switch(mode){
 
 	  case MODE_IDLE:
+		  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
 		  break;
 
 	  case MODE_HOMING:
@@ -429,7 +446,10 @@ int main(void)
 		  if(!S4.homing_status && !S4.isMoving && !S4.totalPulses){
 		  			  moveAngle(&S4, -360, 10);
 		  		  }
-		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status) mode = MODE_IDLE;
+		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status){
+			  mode = MODE_IDLE;
+			  Send_Blackpill_Command(CMD_FORCE_MODE, MODE_IDLE);	// override blackpill switches
+		  }
 		  break;
 
 	  case MODE_AUTONAV:
@@ -442,6 +462,7 @@ int main(void)
 			  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET){
 				  estop_active = 0;
 				  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
+				  Send_Blackpill_Command(CMD_ARM, 0x00);	// wake up blackpill
 			  }
 		  }
 
@@ -533,7 +554,7 @@ int main(void)
 				//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
 				Motor_SetOutput(&B1, b1_control_signal);
 				b2_current_rpm = Encoder_GetSpeedRPM(&E2);
-				b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);
+				b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);	// polarity changed compared to b1,b3,b4 for motor connections
 				Motor_SetOutput(&B2, b2_control_signal);
 				b3_current_rpm = Encoder_GetSpeedRPM(&E3);
 				b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? -b3_target_rpm : b3_target_rpm, b3_current_rpm);
@@ -543,6 +564,8 @@ int main(void)
 				Motor_SetOutput(&B4, b4_control_signal);
 
 				if (HAL_GetTick() - lastTransmissionTime >= 1000/feedback_transmission_freq){
+
+					// sending mode data to ROS2 (might change post-finalization of blackpill-NUCLEO comms
 					 if (last_sent_mode != mode){
 						  bpill_tx_buf[0] = 0xAA;
 						  bpill_tx_buf[1] = (uint8_t)mode;
@@ -551,6 +574,8 @@ int main(void)
 						  //sending_mode++;		// remove after testing
 						  last_sent_mode = mode;
 					 }
+
+					 // sending feedback to ROS2
 					 if (uart_tx_ready)
 					 {
 					     uart_tx_ready = 0;
@@ -1632,6 +1657,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		// noise filter: kyuki EMI = BT
 		if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_RESET) {
 			estop_active = 1;
+			Send_Blackpill_Command(CMD_KILL, 0x00);		// send estop instruction to blackpill
+
 			b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
 			PID_Reset(&pid_b1); PID_Reset(&pid_b2); PID_Reset(&pid_b3); PID_Reset(&pid_b4);
 
