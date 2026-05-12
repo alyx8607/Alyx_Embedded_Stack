@@ -157,6 +157,7 @@ uint8_t bpill_rx_byte;          // Buffer for 1 byte
 volatile uint8_t bpill_rx_state = 0;
 uint8_t bpill_sync_state = 0;   // Keeps track of where we are in the packet
 uint8_t bpill_tx_buf[3];
+uint8_t ros_tx_buf[3];
 
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
@@ -332,8 +333,8 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94.5, -127, -94);	// -99
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95, -120, -86);	// -92
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -96, -127, -94);	// -99
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -120, -86);	// -92
   Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94.5, -125, -90);	// -95
   Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -123, -90);	// -94
 
@@ -385,16 +386,20 @@ int main(void)
   //HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3); // B4
   HAL_TIM_Base_Start_IT(&htim6);	//scheduling interrupts
 
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);	// for incoming ros commands
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);		// for incoming ros commands
   HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);					// listen to black pill for mode instructions
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  S1.homing_status = 0;
-  S2.homing_status = 0;
-  S3.homing_status = 0;
-  S4.homing_status = 0;
+//  S1.homing_status = 0;
+//  S2.homing_status = 0;
+//  S3.homing_status = 0;
+//  S4.homing_status = 0;
+  S1.homing_status = 1;
+  S2.homing_status = 1;
+  S3.homing_status = 1;
+  S4.homing_status = 1;
   while (1)
   {
 
@@ -407,7 +412,7 @@ int main(void)
 //	  }
 
 	  // remove the force after introducing mode switch
-	  if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
+	  //if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
 
 	  switch(mode){
 
@@ -548,59 +553,66 @@ int main(void)
 			  }
 		  }
 
-			if (control_loop){
-				b1_current_rpm = Encoder_GetSpeedRPM(&E1);
-				b1_control_signal = PID_Compute(&pid_b1, (float)B1.mode ? -b1_target_rpm : b1_target_rpm, b1_current_rpm);
-				//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
-				Motor_SetOutput(&B1, b1_control_signal);
-				b2_current_rpm = Encoder_GetSpeedRPM(&E2);
-				b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);	// polarity changed compared to b1,b3,b4 for motor connections
-				Motor_SetOutput(&B2, b2_control_signal);
-				b3_current_rpm = Encoder_GetSpeedRPM(&E3);
-				b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? -b3_target_rpm : b3_target_rpm, b3_current_rpm);
-				Motor_SetOutput(&B3, b3_control_signal);
-				b4_current_rpm = Encoder_GetSpeedRPM(&E4);
-				b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? -b4_target_rpm : b4_target_rpm, b4_current_rpm);
-				Motor_SetOutput(&B4, b4_control_signal);
-
-				if (HAL_GetTick() - lastTransmissionTime >= 1000/feedback_transmission_freq){
-
-					// sending mode data to ROS2 (might change post-finalization of blackpill-NUCLEO comms
-					 if (last_sent_mode != mode){
-						  bpill_tx_buf[0] = 0xAA;
-						  bpill_tx_buf[1] = (uint8_t)mode;
-						  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
-						  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
-						  //sending_mode++;		// remove after testing
-						  last_sent_mode = mode;
-					 }
-
-					 // sending feedback to ROS2
-					 if (uart_tx_ready)
-					 {
-					     uart_tx_ready = 0;
-
-					     int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
-					                            "@S1%ld;S2%ld;S3%ld;S4%ld;"
-					                            //"B1%.4f;B2%.4f;B3%.4f;B4%.4f;"
-					                            "B1%d;B2%d;B3%d;B4%d;\r\n",
-					                            S1.abs_step_count, S2.abs_step_count,
-					                            S3.abs_step_count, S4.abs_step_count,
-					                            //Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2),
-					                            //Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4)
-												b1_target_rpm, b2_target_rpm,
-												b3_target_rpm, b4_target_rpm);
-
-
-					     HAL_UART_Transmit_DMA(&huart5, feedback_buf, tel_len);
-					 }
-				control_loop = 0;
-			}
 		  break;
-			}
 	  default:
 		  break;
 	  }
+
+		if (control_loop){
+			b1_current_rpm = Encoder_GetSpeedRPM(&E1);
+			b1_control_signal = PID_Compute(&pid_b1, (float)B1.mode ? -b1_target_rpm : b1_target_rpm, b1_current_rpm);
+			//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
+			Motor_SetOutput(&B1, b1_control_signal);
+			b2_current_rpm = Encoder_GetSpeedRPM(&E2);
+			b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);	// polarity changed compared to b1,b3,b4 for motor connections
+			Motor_SetOutput(&B2, b2_control_signal);
+			b3_current_rpm = Encoder_GetSpeedRPM(&E3);
+			b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? -b3_target_rpm : b3_target_rpm, b3_current_rpm);
+			Motor_SetOutput(&B3, b3_control_signal);
+			b4_current_rpm = Encoder_GetSpeedRPM(&E4);
+			b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? -b4_target_rpm : b4_target_rpm, b4_current_rpm);
+			Motor_SetOutput(&B4, b4_control_signal);
+
+			if (HAL_GetTick() - lastTransmissionTime >= 1000/feedback_transmission_freq){
+
+				// sending mode data to ROS2 (might change post-finalization of blackpill-NUCLEO comms
+				 if (last_sent_mode != mode){
+					  bpill_tx_buf[0] = 0xAA;
+					  bpill_tx_buf[1] = (uint8_t)mode;
+					  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
+//						  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+//						  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
+					  memcpy(ros_tx_buf, bpill_tx_buf, 3);
+					  //HAL_UART_Transmit_IT(&huart2, bpill_tx_buf, 3);
+					  HAL_UART_Transmit_IT(&huart5, ros_tx_buf, 3);
+
+					  //sending_mode++;		// remove after testing
+					  last_sent_mode = mode;
+				 }
+
+				 // sending feedback to ROS2
+				 if (uart_tx_ready)
+				 {
+				     uart_tx_ready = 0;
+
+				     int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
+				                            "@S1%ld;S2%ld;S3%ld;S4%ld;"
+				                            //"B1%.4f;B2%.4f;B3%.4f;B4%.4f;"
+				                            "B1%d;B2%d;B3%d;B4%d;\r\n",
+				                            S1.abs_step_count, S2.abs_step_count,
+				                            S3.abs_step_count, S4.abs_step_count,
+				                            //Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2),
+				                            //Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4)
+											b1_target_rpm, b2_target_rpm,
+											b3_target_rpm, b4_target_rpm);
+
+
+				     HAL_UART_Transmit_DMA(&huart5, feedback_buf, tel_len);
+				 }
+				 lastTransmissionTime = HAL_GetTick();
+				 control_loop = 0;
+			}
+		}
 
     /* USER CODE END WHILE */
 
