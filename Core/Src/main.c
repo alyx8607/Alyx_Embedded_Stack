@@ -547,7 +547,8 @@ int main(void)
 						  bpill_tx_buf[0] = 0xAA;
 						  bpill_tx_buf[1] = (uint8_t)mode;
 						  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
-						  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+						  //HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+						  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
 						  //sending_mode++;		// remove after testing
 						  last_sent_mode = mode;
 					 }
