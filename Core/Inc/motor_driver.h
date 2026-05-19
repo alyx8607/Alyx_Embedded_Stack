@@ -29,6 +29,8 @@ void Motor_Create(Motor_Handle_t* handle, TIM_HandleTypeDef* pwm_timer, uint32_t
 
 void handle_command(char *cmd);
 
+int parse_mode(char *cmd);
+
 int parse_cmd(const char **p);
 
 void Motor_SetOutput(Motor_Handle_t* handle, float output);

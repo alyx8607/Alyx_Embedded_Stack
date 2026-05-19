@@ -97,6 +97,18 @@ void handle_command(char *cmd)
 	}
 }
 
+int parse_mode(char *cmd){
+	char *m_ptr = strchr(cmd, 'M');
+	if(!m_ptr) m_ptr = strchr(cmd, 'm');
+
+	if (m_ptr){
+		m_ptr++;	// skip M/m char
+		const char *parse_ptr = (const char *)m_ptr;
+		return parse_cmd(&parse_ptr);
+	}
+	return -1;	// no mode command found
+}
+
 // pid tuner requirements:
 
 //void handle_command(char *cmd)
