@@ -152,6 +152,8 @@ volatile uint32_t last_bpill_hearbeat = 0;		// for software watchdog
 uint32_t last_mode_tx = 0;                   // periodic transmission
 volatile uint8_t wireless_estop_active = 0;  // bpill flags
 uint8_t initial_homing_done = 0;
+volatile uint8_t homing_active = 1;		// boot-up homing is protected with 1
+uint32_t idle_teleop_force = 0;
 
 volatile uint8_t bpill_rx_buf[3];
 uint8_t bpill_rx_byte;          // Buffer for 1 byte
@@ -240,7 +242,8 @@ typedef enum {
 float angles[4] = {180.00f*5, 90.00f*5, 30.00f*5, 90.00f*5};
 uint8_t i = 0;
 //MODES mode = MODE_HOMING;
-MODES prev_rec_mode = MODE_IDLE, rec_mode = MODE_IDLE;
+//MODES prev_rec_mode = MODE_IDLE, rec_mode = MODE_IDLE;
+MODES prev_rec_mode = MODE_TELEOP, rec_mode = MODE_TELEOP;
 uint8_t sending_mode = 0;
 volatile MODES ros2_mode = MODE_HOMING;
 MODES current_true_mode = MODE_HOMING;	// so that nucleo sends wired estop to bpill
@@ -392,13 +395,14 @@ int main(void)
 
 	  // timeout after initial homing
 	  uint8_t heartbeat_timeout = (HAL_GetTick() - last_bpill_hearbeat > BPillHeartbeatTime);
-	  if (!initial_homing_done && ros2_mode == MODE_HOMING){
+	  if (homing_active && ros2_mode == MODE_HOMING){
 		  heartbeat_timeout = 0;
 	  }
 	  wireless_estop_active = (heartbeat_timeout) || (rec_mode == MODE_ESTOP);
 
 	  // NUCLEO owns mode
 	  if (estop_active || wireless_estop_active) {
+	  //if (estop_active) {
 	      current_true_mode = MODE_ESTOP;
 	  }
 	  else {								// neither Estop active - rotary switch takes control
@@ -411,7 +415,7 @@ int main(void)
 //		  estop_active = 1;
 //	  }
 
-	  //if (mode == MODE_IDLE) mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
+	  //if (current_true_mode == MODE_IDLE) current_true_mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
 
 	  // telemetry
 	  if ((last_sent_mode != current_true_mode) || (HAL_GetTick() - last_mode_tx > 100)){				// telemetry and safety comms
@@ -429,9 +433,16 @@ int main(void)
 		  int new_mode = parse_mode(main_cmd_buf);
 
 		  if (new_mode >= 0 && new_mode <= 5){
-			  ros2_mode = (MODES)new_mode;
+
+			  // Ignore ESTOP and homing commands from ROS2
+			  if (new_mode != MODE_ESTOP && new_mode != MODE_HOMING) {
+				  if (!homing_active){
+					  ros2_mode = (MODES)new_mode;
+				  }
+			  }
 
 			  if (estop_active || wireless_estop_active){
+			  //if (estop_active) {
 				  current_true_mode = MODE_ESTOP;
 			  }
 			  else {
@@ -451,15 +462,15 @@ int main(void)
 
 	  case MODE_ESTOP:
 		  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
-		  Motor_SetOutput(&B1, 0.0f);
-		  Motor_SetOutput(&B2, 0.0f);
-		  Motor_SetOutput(&B3, 0.0f);
-		  Motor_SetOutput(&B4, 0.0f);
-
-		  PID_Reset(&pid_b1);
-		  PID_Reset(&pid_b2);
-		  PID_Reset(&pid_b3);
-		  PID_Reset(&pid_b4);
+//		  Motor_SetOutput(&B1, 0.0f);
+//		  Motor_SetOutput(&B2, 0.0f);
+//		  Motor_SetOutput(&B3, 0.0f);
+//		  Motor_SetOutput(&B4, 0.0f);
+//
+//		  PID_Reset(&pid_b1);
+//		  PID_Reset(&pid_b2);
+//		  PID_Reset(&pid_b3);
+//		  PID_Reset(&pid_b4);
 
 		// preempt normal movements so they cleanly stop and calculate exact absolute angles
 		// we only do this if we haven't already started the return-to-zero sequence
@@ -490,16 +501,27 @@ int main(void)
 		  }
 		}
 
-		  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET && !wireless_estop_active){
+		  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET && !wireless_estop_active) {
 			  estop_active = 0;
 			  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
-		  }
+
+			// default to idle
+			  //ros2_mode = MODE_IDLE;
+			  ros2_mode = MODE_TELEOP;
+			  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+
+			// purge stepper queues for ros2 spam
+			  initWQueue(&S1.q); initWQueue(&S2.q);
+			  initWQueue(&S3.q); initWQueue(&S4.q);
+			  main_cmd_buf[0] = '\0';
+		}
 
 		  break;
 
 
 	  case MODE_IDLE:
-		  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+		  //b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+		  current_true_mode = MODE_TELEOP;
 		  break;
 
 	  case MODE_HOMING:
@@ -534,9 +556,14 @@ int main(void)
 			  moveAngle(&S4, -360, 10);
 		  }
 		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status){
-			  ros2_mode = MODE_IDLE;	// go idle post homing
-			  if (!initial_homing_done){
-				  initial_homing_done = 1;
+			  //ros2_mode = MODE_IDLE;	// go idle post homing
+			  ros2_mode = MODE_TELEOP;	// go teleop post homing
+//			  if (!initial_homing_done){
+//				  initial_homing_done = 1;
+//				  last_bpill_hearbeat = HAL_GetTick();
+//			  }
+			  if (homing_active){
+				  homing_active = 0;
 				  last_bpill_hearbeat = HAL_GetTick();
 			  }
 		  }
@@ -1690,11 +1717,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
 				if (bpill_rx_buf[2] == expected_checksum) {
 
-					// in case homing is incomplete (edge case)
-					if (mode == MODE_HOMING && !(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status)){
-						mode = MODE_HOMING;
-						break;
-					}
+//					// in case homing is incomplete (edge case)
+//					if (current_true_mode == MODE_HOMING && !(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status)){
+//						current_true_mode = MODE_HOMING;
+//						break;
+//					}
 
 					prev_rec_mode = rec_mode;
 					rec_mode = bpill_rx_buf[1];					// apply mode if checksum is correct
