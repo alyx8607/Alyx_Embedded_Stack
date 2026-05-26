@@ -327,9 +327,9 @@ int main(void)
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
   // Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -95, -127, -94);	// -99
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -92, -120, -86);	// -92
-  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -92.5, -125, -90);	// -95
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -127, -94);	// -99
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -97, -120, -86);	// -92
+  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -90, -125, -90);	// -95
   Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -93, -123, -90);	// -94
 
   initTimer(&S1);
@@ -505,23 +505,17 @@ int main(void)
 			  estop_active = 0;
 			  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
 
-			// default to idle
-			  //ros2_mode = MODE_IDLE;
+			  // default to idle
+			  // ros2_mode = MODE_IDLE;
 			  ros2_mode = MODE_TELEOP;
 			  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
 
-			// purge stepper queues for ros2 spam
+			  // purge stepper queues for ros2 spam
 			  initWQueue(&S1.q); initWQueue(&S2.q);
 			  initWQueue(&S3.q); initWQueue(&S4.q);
 			  main_cmd_buf[0] = '\0';
 		}
 
-		  break;
-
-
-	  case MODE_IDLE:
-		  //b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
-		  current_true_mode = MODE_TELEOP;
 		  break;
 
 	  case MODE_HOMING:
@@ -568,6 +562,13 @@ int main(void)
 			  }
 		  }
 		  break;
+
+
+	  case MODE_IDLE:
+		  //b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+		  //current_true_mode = MODE_TELEOP;
+		  //break;
+		  // IDLE WAS ACTUALLLY A THING - TEAM CAPTAIN ONAS CHATURVEDI MADE US REMOVE IT. HUM CHUTIYE NAHI HE WE SWEAR
 
 	  case MODE_AUTONAV:
 
