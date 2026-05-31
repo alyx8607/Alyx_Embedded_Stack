@@ -160,6 +160,7 @@ uint8_t bpill_rx_byte;          // Buffer for 1 byte
 volatile uint8_t bpill_rx_state = 0;
 uint8_t bpill_sync_state = 0;   // Keeps track of where we are in the packet
 uint8_t bpill_tx_buf[3];
+volatile uint8_t homing_completed_this_session = 0;
 
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
@@ -406,7 +407,7 @@ int main(void)
 	      current_true_mode = MODE_ESTOP;
 	  }
 	  else {								// neither Estop active - rotary switch takes control
-	      current_true_mode = ros2_mode;
+	      current_true_mode = rec_mode;
 	  }
 
 //	  // software watchdog for bpill instructions (can't use rn because of keyboard tele-op node)
@@ -551,7 +552,8 @@ int main(void)
 		  }
 		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status){
 			  //ros2_mode = MODE_IDLE;	// go idle post homing
-			  ros2_mode = MODE_TELEOP;	// go teleop post homing
+			  rec_mode = MODE_TELEOP;	// go teleop post homing
+			  homing_completed_this_session = 1;
 //			  if (!initial_homing_done){
 //				  initial_homing_done = 1;
 //				  last_bpill_hearbeat = HAL_GetTick();
@@ -1710,44 +1712,41 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				bpill_rx_buf[1] = bpill_rx_byte;
 				bpill_rx_state = 2;
 				break;
+			case 2: //verify checksum
+			    bpill_rx_buf[2] = bpill_rx_byte;
+			    bpill_rx_state = 0;
+			    uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
 
-			case 2:		// verify checksum
-				bpill_rx_buf[2] = bpill_rx_byte;
-				bpill_rx_state = 0;
-				// get actual checksum value
-				uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
-				if (bpill_rx_buf[2] == expected_checksum) {
+			    if (bpill_rx_buf[2] == expected_checksum) {
 
-//					// in case homing is incomplete (edge case)
-//					if (current_true_mode == MODE_HOMING && !(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status)){
-//						current_true_mode = MODE_HOMING;
-//						break;
-//					}
+			        // blackpill stopped asking for HOMING → rotary has moved off, allow future re-homes
+			        if (bpill_rx_buf[1] != MODE_HOMING) {
+			            homing_completed_this_session = 0;
+			        }
 
-					prev_rec_mode = rec_mode;
-					rec_mode = bpill_rx_buf[1];					// apply mode if checksum is correct
-					last_bpill_hearbeat = HAL_GetTick();		// valid transmission received
+			        // blackpill keeps asking for HOMING but we already did it this session → ignore
+			        if (bpill_rx_buf[1] == MODE_HOMING && homing_completed_this_session) {
+			            last_bpill_hearbeat = HAL_GetTick();   // keep heartbeat alive
+			            break;                                  // don't touch rec_mode, don't reset
+			        }
 
-					// edge case if bpill tells me to home
-					if (rec_mode == MODE_HOMING && prev_rec_mode != MODE_HOMING){
-						Stepper_Stop(&S1); Stepper_Stop(&S2);
-						Stepper_Stop(&S3); Stepper_Stop(&S4);
-						S1.totalPulses = 0;
-						S2.totalPulses = 0;
-						S3.totalPulses = 0;
-						S4.totalPulses = 0;
-						S1.homing_status = 0;
-						S2.homing_status = 0;
-						S3.homing_status = 0;
-						S4.homing_status = 0;
-						S1.correctOffset = 0;
-						S2.correctOffset = 0;
-						S3.correctOffset = 0;
-						S4.correctOffset = 0;
-					}
-				}
-				//mode = rec_mode;
-				break;
+			        prev_rec_mode = rec_mode;
+			        rec_mode = bpill_rx_buf[1];
+			        last_bpill_hearbeat = HAL_GetTick();
+
+			        // fresh HOMING request — reset stepper state
+			        if (rec_mode == MODE_HOMING && prev_rec_mode != MODE_HOMING){
+			            Stepper_Stop(&S1); Stepper_Stop(&S2);
+			            Stepper_Stop(&S3); Stepper_Stop(&S4);
+			            S1.totalPulses = 0; S2.totalPulses = 0;
+			            S3.totalPulses = 0; S4.totalPulses = 0;
+			            S1.homing_status = 0; S2.homing_status = 0;
+			            S3.homing_status = 0; S4.homing_status = 0;
+			            S1.correctOffset = 0; S2.correctOffset = 0;
+			            S3.correctOffset = 0; S4.correctOffset = 0;
+			        }
+			    }
+			    break;
 		}
 			// re-arm interrupt for next byte
 			HAL_UART_Receive_IT(huart, &bpill_rx_byte, 1);
