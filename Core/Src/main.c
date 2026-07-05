@@ -40,16 +40,18 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define CTRL_Loop_Freq 100
 #define CTRL_Loop_Period (1.0f / CTRL_Loop_Freq)
-#define ENCODERS_CPR 1993	// in motor spec sheet
-//#define ENCODERS_CPR 92733
+#define ENCODERS_CPR 1993			// bilda motors
+//#define ENCODERS_CPR 92733		// old rhino motors
+#define DEBOUNCE_TIME_PERIOD 50		// debounce time for lim switches
 #define Stepper_Microsteps 1
 #define Stepper_Motor_Steps_Per_Rev 800
 //#define Stepper_Motor_Steps_Per_Rev 1600
 #define Stepper_Steps_Per_Rev (Stepper_Motor_Steps_Per_Rev * Stepper_Microsteps)
 #define rx_buf_size 64
-#define feedback_buf_size 64
+#define feedback_buf_size 512
+#define feedback_transmission_freq 200
+#define BPillHeartbeatTime 300
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,15 +64,15 @@ PID_Handle_t pid_b4;
 // 1   2
 // 3   4
 // for back-left motors
-Motor_Handle_t B1; //B -> BDC
+Motor_Handle_t B1; 		// B -> BDC
 Motor_Handle_t B2;
 Motor_Handle_t B3;
 Motor_Handle_t B4;
-Encoder_Handle_t E1; //E -> Encoder
+Encoder_Handle_t E1; 	// E -> Encoder
 Encoder_Handle_t E2;
 Encoder_Handle_t E3;
 Encoder_Handle_t E4;
-Stepper_Handle_t S1;
+Stepper_Handle_t S1;	// S -> Stepper
 Stepper_Handle_t S2;
 Stepper_Handle_t S3;
 Stepper_Handle_t S4;
@@ -82,7 +84,6 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim6;
-TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim8;
 TIM_HandleTypeDef htim15;
 TIM_HandleTypeDef htim16;
@@ -92,6 +93,7 @@ TIM_HandleTypeDef htim20;
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_uart5_rx;
+DMA_HandleTypeDef hdma_uart5_tx;
 
 /* USER CODE BEGIN PV */
 // Encoder + RPM vars
@@ -110,17 +112,16 @@ float b3_control_signal = 0.0f;
 float b4_control_signal = 0.0f;
 
 // stepper motor
-//volatile float stepper_target_angle = 0.0f;
-//volatile int new_stepper_command = 0;
-//volatile float angle_to_move = 0.0f;
-//volatile uint8_t step_dir = 0;
 volatile int s1_target_angle = 0;
 volatile int s2_target_angle = 0;
 volatile int s3_target_angle = 0;
 volatile int s4_target_angle = 0;
-volatile int s1_acc_err_pulses = 0;
 
-volatile uint8_t control_loop = 0;
+// homing steppers
+volatile uint32_t last_debounce_time[4] = {0, 0, 0, 0};
+volatile uint32_t current_debounce_time = 0;
+
+volatile uint8_t control_loop = 0;		// control loop flag
 
 // USB - USki Baat sunle lolololololol
 //uint8_t instruct_buffer[64];
@@ -128,23 +129,44 @@ volatile uint8_t control_loop = 0;
 
 uint8_t rx_buf[rx_buf_size];
 uint8_t rx_byte;
-//uint8_t buffer[10];
 volatile int rx_idx = 0;
 volatile uint8_t callback_flag = 0;
 uint8_t feedback_buf[feedback_buf_size];
-
 volatile uint8_t uart_data_ready = 0;
 uint8_t shadow_rx_buf[rx_buf_size * 2]; // This is the CPU's private copy: large to hold accumulations
 char main_cmd_buf[128];                 // The CPU parses this in the while(1) loop
+uint32_t lastTransmissionTime = 0;
+
+// UART stop waala error (YOU ARE T) lololol
+volatile uint8_t error_entered = 0;
+volatile uint32_t last_error;
+volatile uint8_t uarterror = 0;
+volatile uint32_t uarterror3_error;
+
+//uint32_t last_cmd_time = 0;
+//volatile uint8_t wdt_active = 0; // indicate teleop watchdog has taken control
+volatile uint8_t estop_active = 0;
+volatile uint8_t estop_action_done = 0;
+
+volatile uint32_t last_bpill_hearbeat = 0;		// for software watchdog
+uint32_t last_mode_tx = 0;                   // periodic transmission
+volatile uint8_t wireless_estop_active = 0;  // bpill flags
+uint8_t initial_homing_done = 0;
+volatile uint8_t homing_active = 1;		// boot-up homing is protected with 1
+uint32_t idle_teleop_force = 0;
+
+volatile uint8_t bpill_rx_buf[3];
+uint8_t bpill_rx_byte;          // Buffer for 1 byte
+volatile uint8_t bpill_rx_state = 0;
+uint8_t bpill_sync_state = 0;   // Keeps track of where we are in the packet
+uint8_t bpill_tx_buf[3];
 
 static float current_kp = 0.004893002197721693f;		// par kp toh senior he lmaoooo
 static float current_ki = 0.02823752341330259f;
 static float current_kd = 0.00013409059780944936f;
 
-volatile uint8_t moveStepper1;
-volatile uint8_t moveStepper2;
-volatile uint8_t moveStepper3;
-volatile uint8_t moveStepper4;
+volatile uint8_t uart_tx_ready = 1;
+int flag = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -163,7 +185,6 @@ static void MX_TIM20_Init(void);
 static void MX_UART5_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -209,8 +230,24 @@ static inline float clamp_deg_180_pos(float a)
     return a;   // (-180, 180]
 }
 
+typedef enum {
+	MODE_ESTOP = 0x00,
+	MODE_HOMING = 0x01,
+	MODE_TELEOP = 0x02,
+	MODE_AUTONAV = 0x03,
+	MODE_SELFDRIVE = 0x04,
+	MODE_IDLE = 0x05
+} MODES;
+
 float angles[4] = {180.00f*5, 90.00f*5, 30.00f*5, 90.00f*5};
 uint8_t i = 0;
+//MODES mode = MODE_HOMING;
+//MODES prev_rec_mode = MODE_IDLE, rec_mode = MODE_IDLE;
+MODES prev_rec_mode = MODE_TELEOP, rec_mode = MODE_TELEOP;
+uint8_t sending_mode = 0;
+volatile MODES ros2_mode = MODE_HOMING;
+MODES current_true_mode = MODE_HOMING;	// so that nucleo sends wired estop to bpill
+MODES last_sent_mode = (MODES)0xFF;		// warning: could be fucky?
 
 //float map_rpm_to_signal(float rpm) {
 //
@@ -224,6 +261,8 @@ uint8_t i = 0;
 float c_angle = 0.0f;
 int c_rpm = 120;
 int cmd_count = 0;
+
+int prev_rpm = 100;
 /* USER CODE END 0 */
 
 /**
@@ -268,41 +307,41 @@ int main(void)
   MX_UART5_Init();
   MX_TIM16_Init();
   MX_USART2_UART_Init();
-  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
+  // PID Instances
   PID_Create(&pid_b1, current_kp, current_ki, current_kd, CTRL_Loop_Period);
   PID_Create(&pid_b2, current_kp, current_ki, current_kd, CTRL_Loop_Period);
   PID_Create(&pid_b3, current_kp, current_ki, current_kd, CTRL_Loop_Period);
   PID_Create(&pid_b4, current_kp, current_ki, current_kd, CTRL_Loop_Period);
 
-  //Motors
+  // Motors
   Motor_Create(&B1, &htim3, TIM_CHANNEL_1, GPIOB, GPIO_PIN_15);
   Motor_Create(&B2, &htim3, TIM_CHANNEL_2, GPIOB, GPIO_PIN_13);
-  Motor_Create(&B3, &htim3, TIM_CHANNEL_3, GPIOB, GPIO_PIN_12);
+  Motor_Create(&B3, &htim3, TIM_CHANNEL_3, GPIOC, GPIO_PIN_9);
   Motor_Create(&B4, &htim3, TIM_CHANNEL_4, GPIOC, GPIO_PIN_5);
 
-  //Motor encoders
+  // Motor encoders
   Encoder_Create(&E1, &htim1, ENCODERS_CPR);
   Encoder_Create(&E2, &htim2, ENCODERS_CPR);
   Encoder_Create(&E3, &htim4, ENCODERS_CPR);
   Encoder_Create(&E4, &htim8, ENCODERS_CPR);
 
-  //Steppers
-  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
-  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
-  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOC, GPIO_PIN_9, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
-  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 0);
+  // Steppers
+  Stepper_Create(&S1, &htim17, TIM_CHANNEL_1, GPIOB, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -96, -127, -94);	// -99
+  Stepper_Create(&S2, &htim15, TIM_CHANNEL_1, GPIOA, GPIO_PIN_10, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -94, -120, -86);	// -92
+  Stepper_Create(&S3, &htim16, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -91, -125, -90);	// -95
+  Stepper_Create(&S4, &htim20, TIM_CHANNEL_1, GPIOC, GPIO_PIN_8, 0, 0, Stepper_Motor_Steps_Per_Rev * 5, 0, 1, 1, -91, -123, -90);	// -94
 
   initTimer(&S1);
   initTimer(&S2);
   initTimer(&S3);
   initTimer(&S4);
 
-  // temporary stepper enable until we figure out wht to do with it
+  // timer period callback
 
-  //timer period callback
-
-  TIM6_SetPeriod_us(100000);
+  uint32_t period_us = 1000000 / CTRL_Loop_Freq;
+  //TIM6_SetPeriod_us((1.0f/CTRL_Loop_Freq) * 1000000);
+  TIM6_SetPeriod_us(period_us);
   DWT_Init();
 
   //Stepper_Create(&stepper_handle_BL, &htim17, TIM_CHANNEL_1, STEP_BL_DIR_GPIO_Port,  STEP_BL_DIR_Pin, STEP_BL_ENA_GPIO_Port, STEP_BL_ENA_Pin, Stepper_Steps_Per_Rev);
@@ -341,81 +380,366 @@ int main(void)
   //HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3); // B4
   HAL_TIM_Base_Start_IT(&htim6);	//scheduling interrupts
 
-  //HAL_UART_Receive_IT(&huart5, &rx_byte, 1); // for incoming ros commands
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
-
-  //Stepper_Enable(&stepper_handle_BL);
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);	// for incoming ros commands
+  HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);					// listen to black pill for mode instructions
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  S1.homing_status = 0;
+  S2.homing_status = 0;
+  S3.homing_status = 0;
+  S4.homing_status = 0;
   while (1)
   {
 
-	  if (uart_data_ready) {
-		uart_data_ready = 0;
-		handle_command(main_cmd_buf);
+	  // timeout after initial homing
+	  uint8_t heartbeat_timeout = (HAL_GetTick() - last_bpill_hearbeat > BPillHeartbeatTime);
+	  if (homing_active && ros2_mode == MODE_HOMING){
+		  heartbeat_timeout = 0;
+	  }
+	  wireless_estop_active = (heartbeat_timeout) || (rec_mode == MODE_ESTOP);
+
+	  // NUCLEO owns mode
+	  if (estop_active || wireless_estop_active) {
+	  //if (estop_active) {
+	      current_true_mode = MODE_ESTOP;
+	  }
+	  else {								// neither Estop active - rotary switch takes control
+	      current_true_mode = ros2_mode;
 	  }
 
-	  if(!S1.isMoving && !WisEmpty(&S1.q)){
-		  Wrapper temp = dequeueW(&S1.q);
-		  delay_us(1000);
-		  moveAngleAbsolute(&S1, temp.degree, temp.rpm);
+//	  // software watchdog for bpill instructions (can't use rn because of keyboard tele-op node)
+//	  if ((HAL_GetTick() - last_bpill_hearbeat) > 500){
+//		  mode = MODE_ESTOP;
+//		  estop_active = 1;
+//	  }
+
+	  //if (current_true_mode == MODE_IDLE) current_true_mode = MODE_TELEOP; //forcing teleop instead of idle for now, will change when switches.
+
+	  // telemetry
+	  if ((last_sent_mode != current_true_mode) || (HAL_GetTick() - last_mode_tx > 100)){				// telemetry and safety comms
+		  bpill_tx_buf[0] = 0xAA;
+		  bpill_tx_buf[1] = current_true_mode;
+		  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
+		  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
+		  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+		  last_sent_mode = current_true_mode;
+		  last_mode_tx = HAL_GetTick();
 	  }
-	  if(!S2.isMoving && !WisEmpty(&S2.q)){
-		  Wrapper temp = dequeueW(&S2.q);
-		  delay_us(1000);
-		  moveAngleAbsolute(&S2, temp.degree, temp.rpm);
+
+	  if (uart_data_ready){
+		  uart_data_ready = 0;
+		  int new_mode = parse_mode(main_cmd_buf);
+
+		  if (new_mode >= 0 && new_mode <= 5){
+
+			  // Ignore ESTOP and homing commands from ROS2
+			  if (new_mode != MODE_ESTOP && new_mode != MODE_HOMING) {
+				  if (!homing_active){
+					  ros2_mode = (MODES)new_mode;
+				  }
+			  }
+
+			  if (estop_active || wireless_estop_active){
+			  //if (estop_active) {
+				  current_true_mode = MODE_ESTOP;
+			  }
+			  else {
+				  current_true_mode = ros2_mode;
+			  }
+		  }
+		  // motor parser runs only in safe driving mode
+		  if (current_true_mode == MODE_TELEOP ||
+			  current_true_mode == MODE_AUTONAV ||
+			  current_true_mode == MODE_SELFDRIVE){
+			  handle_command(main_cmd_buf);
+		  }
+		  main_cmd_buf[0] = '\0';
 	  }
-	  if(!S3.isMoving && !WisEmpty(&S3.q)){
-		  Wrapper temp = dequeueW(&S3.q);
-		  delay_us(1000);
-		  moveAngleAbsolute(&S3, temp.degree, temp.rpm);
+
+	  switch(current_true_mode){
+
+	  case MODE_ESTOP:
+		  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+//		  Motor_SetOutput(&B1, 0.0f);
+//		  Motor_SetOutput(&B2, 0.0f);
+//		  Motor_SetOutput(&B3, 0.0f);
+//		  Motor_SetOutput(&B4, 0.0f);
+//
+//		  PID_Reset(&pid_b1);
+//		  PID_Reset(&pid_b2);
+//		  PID_Reset(&pid_b3);
+//		  PID_Reset(&pid_b4);
+
+		// preempt normal movements so they cleanly stop and calculate exact absolute angles
+		// we only do this if we haven't already started the return-to-zero sequence
+		if (!estop_action_done) {
+			if (S1.isMoving) S1.pending_preemption = 1;
+			if (S2.isMoving) S2.pending_preemption = 1;
+			if (S3.isMoving) S3.pending_preemption = 1;
+			if (S4.isMoving) S4.pending_preemption = 1;
+
+			// yaw-estop-yaw fails the motordriver.c check for lastInstruct because last is still yaw angle so gets skipped
+			S1.lastInstruct.degree = 0;
+			S2.lastInstruct.degree = 0;
+			S3.lastInstruct.degree = 0;
+			S4.lastInstruct.degree = 0;
+		}
+
+		// once steppers naturally halt and update their angles, trigger zeroing
+		if (!S1.isMoving && !S2.isMoving && !S3.isMoving && !S4.isMoving) {
+		  if (!estop_action_done) {
+			  estop_action_done = 1;
+
+			  if (S1.homing_status) moveAngleAbsolute(&S1, 0, 30, &B1);
+			  if (S2.homing_status) moveAngleAbsolute(&S2, 0, 30, &B2);
+			  if (S3.homing_status) moveAngleAbsolute(&S3, 0, 30, &B3);
+			  if (S4.homing_status) moveAngleAbsolute(&S4, 0, 30, &B4);
+
+			  initWQueue(&S1.q); initWQueue(&S2.q); initWQueue(&S3.q); initWQueue(&S4.q);
+		  }
+		}
+
+		  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET && !wireless_estop_active) {
+			  estop_active = 0;
+			  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
+
+			  // default to idle
+			  // ros2_mode = MODE_IDLE;
+			  ros2_mode = MODE_TELEOP;
+			  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+
+			  // purge stepper queues for ros2 spam
+			  initWQueue(&S1.q); initWQueue(&S2.q);
+			  initWQueue(&S3.q); initWQueue(&S4.q);
+			  main_cmd_buf[0] = '\0';
+		}
+
+		  break;
+
+	  case MODE_HOMING:
+
+		  if(S1.correctOffset == 1){
+			  moveAngle(&S1, -S1.limSwitchOffset, 30);
+			  S1.correctOffset = 2;
+		  }
+		  if(S2.correctOffset == 1){
+			  moveAngle(&S2, -S2.limSwitchOffset, 30);
+			  S2.correctOffset = 2;
+		  }
+		  if(S3.correctOffset == 1){
+			  moveAngle(&S3, -S3.limSwitchOffset, 30);
+			  S3.correctOffset = 2;
+		  }
+		  if(S4.correctOffset == 1){
+			  moveAngle(&S4, -S4.limSwitchOffset, 30);
+			  S4.correctOffset = 2;
+		  }
+
+		  if(!S1.homing_status && !S1.isMoving && !S1.totalPulses){
+			  moveAngle(&S1, -360, 10);
+		  }
+		  if(!S2.homing_status && !S2.isMoving && !S2.totalPulses){
+			  moveAngle(&S2, -360, 10);
+		  }
+		  if(!S3.homing_status && !S3.isMoving && !S3.totalPulses){
+			  moveAngle(&S3, -360, 10);
+		  }
+		  if(!S4.homing_status && !S4.isMoving && !S4.totalPulses){
+			  moveAngle(&S4, -360, 10);
+		  }
+		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status){
+			  //ros2_mode = MODE_IDLE;	// go idle post homing
+			  ros2_mode = MODE_TELEOP;	// go teleop post homing
+//			  if (!initial_homing_done){
+//				  initial_homing_done = 1;
+//				  last_bpill_hearbeat = HAL_GetTick();
+//			  }
+			  if (homing_active){
+				  homing_active = 0;
+				  last_bpill_hearbeat = HAL_GetTick();
+			  }
+		  }
+		  break;
+
+
+	  case MODE_IDLE:
+		  //b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+		  //current_true_mode = MODE_TELEOP;
+		  //break;
+		  // IDLE WAS ACTUALLLY A THING - TEAM CAPTAIN ONAS CHATURVEDI MADE US REMOVE IT. HUM CHUTIYE NAHI HE WE SWEAR
+
+	  case MODE_AUTONAV:
+
+	  case MODE_SELFDRIVE:
+
+	  case MODE_TELEOP:
+
+//		  if (estop_active){
+//			  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET){
+//				  estop_active = 0;
+//				  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
+//			  }
+//		  }
+
+//		  if (uart_data_ready) {
+//			uart_data_ready = 0;
+//			if (!estop_active){
+//				//last_cmd_time = HAL_GetTick();
+//				handle_command(main_cmd_buf);
+//			}
+//		  }
+
+		  // so that new parsing doesnt parse P.A.I.N (bas failsafe in case estop press ke baad bhi instructions aa rahe he)
+		  // oh also - FUCK EMI
+
+//		  // E-stop provisions
+//		  if (estop_active) {
+//			  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+//			  	// preempt normal movements so they cleanly stop and calculate exact absolute angles
+//				// we only do this if we haven't already started the return-to-zero sequence
+//				if (!estop_action_done) {
+//					if (S1.isMoving) S1.pending_preemption = 1;
+//					if (S2.isMoving) S2.pending_preemption = 1;
+//					if (S3.isMoving) S3.pending_preemption = 1;
+//					if (S4.isMoving) S4.pending_preemption = 1;
+//
+//					// yaw-estop-yaw fails the motordriver.c check for lastInstruct because last is still yaw angle so gets skipped
+//					S1.lastInstruct.degree = 0;
+//					S2.lastInstruct.degree = 0;
+//					S3.lastInstruct.degree = 0;
+//					S4.lastInstruct.degree = 0;
+//				}
+//
+//				// once steppers naturally halt and update their angles, trigger zeroing
+//				if (!S1.isMoving && !S2.isMoving && !S3.isMoving && !S4.isMoving) {
+//				  if (!estop_action_done) {
+//					  estop_action_done = 1;
+//
+//					  if (S1.homing_status) moveAngleAbsolute(&S1, 0, 30, &B1);
+//					  if (S2.homing_status) moveAngleAbsolute(&S2, 0, 30, &B2);
+//					  if (S3.homing_status) moveAngleAbsolute(&S3, 0, 30, &B3);
+//					  if (S4.homing_status) moveAngleAbsolute(&S4, 0, 30, &B4);
+//
+//					  initWQueue(&S1.q); initWQueue(&S2.q); initWQueue(&S3.q); initWQueue(&S4.q);
+//				  }
+//				}
+//
+//		  }
+
+
+		  // ! software watchdog to make sure continuous commands are received !
+
+//		  if (HAL_GetTick() - last_cmd_time > Command_WDT_Max_Time){
+//			  // software watchdog for teleop commands
+//			  if (!wdt_active){
+//
+//				  wdt_active = 1;
+//
+//				  b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+//				  if (S1.homing_status) moveAngleAbsolute(&S1, 0, 30, &B1);
+//				  if (S2.homing_status) moveAngleAbsolute(&S2, 0, 30, &B2);
+//				  if (S3.homing_status) moveAngleAbsolute(&S3, 0, 30, &B3);
+//				  if (S4.homing_status) moveAngleAbsolute(&S4, 0, 30, &B4);
+//				  initWQueue(&S1.q); initWQueue(&S2.q); initWQueue(&S3.q); initWQueue(&S4.q);
+//			  }
+//		  }
+
+		  //if (!estop_active && !wdt_active){
+		  if (!estop_active){
+			  if(!S1.isMoving && !WisEmpty(&S1.q) && !S1.pending_preemption){
+				  Wrapper temp = dequeueW(&S1.q);
+				  moveAngleAbsolute(&S1, temp.degree, temp.rpm, &B1);
+			  }
+			  if(!S2.isMoving && !WisEmpty(&S2.q) && !S2.pending_preemption){
+				  Wrapper temp = dequeueW(&S2.q);
+				  moveAngleAbsolute(&S2, temp.degree, temp.rpm, &B2);
+			  }
+			  if(!S3.isMoving && !WisEmpty(&S3.q) && !S3.pending_preemption){
+				  Wrapper temp = dequeueW(&S3.q);
+				  moveAngleAbsolute(&S3, temp.degree, temp.rpm, &B3);
+			  }
+			  if(!S4.isMoving && !WisEmpty(&S4.q) && !S4.pending_preemption){
+				  Wrapper temp = dequeueW(&S4.q);
+				  moveAngleAbsolute(&S4, temp.degree, temp.rpm, &B4);
+			  }
+		  }
+
+		  break;
+
+	  default:
+		  break;
 	  }
-	  if(!S4.isMoving && !WisEmpty(&S4.q)){
-		  Wrapper temp = dequeueW(&S4.q);
-		  delay_us(1000);
-		  moveAngleAbsolute(&S4, temp.degree, temp.rpm);
-	  }
+
+		if (control_loop){
+			b1_current_rpm = Encoder_GetSpeedRPM(&E1);
+			b2_current_rpm = Encoder_GetSpeedRPM(&E2);
+			b3_current_rpm = Encoder_GetSpeedRPM(&E3);
+			b4_current_rpm = Encoder_GetSpeedRPM(&E4);
+
+			if (current_true_mode == MODE_ESTOP){
+				  Motor_SetOutput(&B1, 0.0f);
+				  Motor_SetOutput(&B2, 0.0f);
+				  Motor_SetOutput(&B3, 0.0f);
+				  Motor_SetOutput(&B4, 0.0f);
+
+				  PID_Reset(&pid_b1);
+				  PID_Reset(&pid_b2);
+				  PID_Reset(&pid_b3);
+				  PID_Reset(&pid_b4);
+			}
+			else {
+				b1_control_signal = PID_Compute(&pid_b1, (float)B1.mode ? -b1_target_rpm : b1_target_rpm, b1_current_rpm);
+				//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
+				Motor_SetOutput(&B1, b1_control_signal);
+
+				b2_control_signal = PID_Compute(&pid_b2, (float)B2.mode ? b2_target_rpm : -b2_target_rpm, b2_current_rpm);
+				Motor_SetOutput(&B2, b2_control_signal);
+
+				b3_control_signal = PID_Compute(&pid_b3, (float)B3.mode ? -b3_target_rpm : b3_target_rpm, b3_current_rpm);
+				Motor_SetOutput(&B3, b3_control_signal);
+
+				b4_control_signal = PID_Compute(&pid_b4, (float)B4.mode ? -b4_target_rpm : b4_target_rpm, b4_current_rpm);
+				Motor_SetOutput(&B4, b4_control_signal);
+			}
+
+			if (HAL_GetTick() - lastTransmissionTime >= 1000/feedback_transmission_freq){
+//					 if (last_sent_mode != mode){
+//
+//						  bpill_tx_buf[0] = 0xAA;
+//						  bpill_tx_buf[1] = (uint8_t)mode;
+//						  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
+//						  //HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+//						  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
+//						  //sending_mode++;		// remove after testing
+//						  last_sent_mode = mode;
+//					 }
+
+				 if (uart_tx_ready)
+				 {
+					int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
+											"@S1%ld;S2%ld;S3%ld;S4%ld;"
+											//"B1%.4f;B2%.4f;B3%.4f;B4%.4f;"
+											"B1%d;B2%d;B3%d;B4%d;\r\n",
+											S1.abs_step_count, S2.abs_step_count,
+											S3.abs_step_count, S4.abs_step_count,
+											//Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2),
+											//Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4)
+											b1_target_rpm, b2_target_rpm,
+											b3_target_rpm, b4_target_rpm);
+					 if (HAL_UART_Transmit_DMA(&huart5, feedback_buf, tel_len) == HAL_OK){
+						 uart_tx_ready = 0;
+						 lastTransmissionTime = HAL_GetTick();
+					 }
+				 }
+			}
+			control_loop = 0;
+		}
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	if (control_loop){
-		b1_current_rpm = Encoder_GetSpeedRPM(&E1);
-		b1_control_signal = PID_Compute(&pid_b1, (float)b1_target_rpm, b1_current_rpm);
-		// --- TELEMETRY TRANSMISSION START ---
-		// Format: "Target,Current"
-		//char telemetry_buf[64];
-
-		// Fixed: Only passing 2 arguments to match "T:%d C:%.2f"
-//		int len = snprintf(telemetry_buf, sizeof(telemetry_buf),
-//						   "%.2f,%d\r\n",
-//						   E2.speed_rpm, b2_target_rpm);
-
-		// Transmit via UART5
-		//HAL_UART_Transmit(&huart5, (uint8_t*)telemetry_buf, len, 10);
-		// --- TELEMETRY TRANSMISSION END -----
-		//b1_control_signal = map_rpm_to_signal((float)b1_target_rpm);
-		Motor_SetOutput(&B1, b1_control_signal);
-		b2_current_rpm = Encoder_GetSpeedRPM(&E2);
-		b2_control_signal = PID_Compute(&pid_b2, (float)b2_target_rpm, b2_current_rpm);
-		//b2_control_signal = map_rpm_to_signal((float)b2_target_rpm);
-		Motor_SetOutput(&B2, b2_control_signal);
-		b3_current_rpm = Encoder_GetSpeedRPM(&E3);
-		b3_control_signal = PID_Compute(&pid_b3, (float)b3_target_rpm, b3_current_rpm);
-		Motor_SetOutput(&B3, b3_control_signal);
-		b4_current_rpm = Encoder_GetSpeedRPM(&E4);
-		b4_control_signal = PID_Compute(&pid_b4, (float)b4_target_rpm, b4_current_rpm);
-		Motor_SetOutput(&B4, b4_control_signal);
-//
-//		int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
-//		                           "@S%ld,%ld,%ld,%ld!\r\n",
-//		                           S1.abs_step_count, S2.abs_step_count,
-//		                           S3.abs_step_count, S4.abs_step_count);
-//		HAL_UART_Transmit(&huart5, feedback_buf, tel_len, 5);
-
-		control_loop = 0;
-	}
 
   }
 
@@ -721,44 +1045,6 @@ static void MX_TIM6_Init(void)
 }
 
 /**
-  * @brief TIM7 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM7_Init(void)
-{
-
-  /* USER CODE BEGIN TIM7_Init 0 */
-
-  /* USER CODE END TIM7_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  /* USER CODE BEGIN TIM7_Init 1 */
-
-  /* USER CODE END TIM7_Init 1 */
-  htim7.Instance = TIM7;
-  htim7.Init.Prescaler = 0;
-  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim7.Init.Period = 65535;
-  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM7_Init 2 */
-
-  /* USER CODE END TIM7_Init 2 */
-
-}
-
-/**
   * @brief TIM8 Initialization Function
   * @param None
   * @retval None
@@ -839,6 +1125,10 @@ static void MX_TIM15_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_OnePulse_Init(&htim15, TIM_OPMODE_SINGLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim15, &sMasterConfig) != HAL_OK)
@@ -847,7 +1137,7 @@ static void MX_TIM15_Init(void)
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
@@ -908,9 +1198,13 @@ static void MX_TIM16_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_OnePulse_Init(&htim16, TIM_OPMODE_SINGLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
@@ -971,9 +1265,13 @@ static void MX_TIM17_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_OnePulse_Init(&htim17, TIM_OPMODE_SINGLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
@@ -1031,6 +1329,10 @@ static void MX_TIM20_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_OnePulse_Init(&htim20, TIM_OPMODE_SINGLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
@@ -1040,7 +1342,7 @@ static void MX_TIM20_Init(void)
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
@@ -1183,6 +1485,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
@@ -1207,25 +1512,25 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, S1_ENA_Pin|S2_ENA_Pin|B4_DIR_Pin|S4_DIR_Pin
-                          |S3_DIR_Pin, GPIO_PIN_RESET);
+                          |B3_DIR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, S4_ENA_Pin|S2_DIR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, B3_DIR_Pin|B2_DIR_Pin|B1_DIR_Pin|S3_ENA_Pin
+  HAL_GPIO_WritePin(GPIOB, S3_DIR_Pin|B2_DIR_Pin|B1_DIR_Pin|S3_ENA_Pin
                           |S1_DIR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : S1_LIM_Pin S4_LIM_Pin S3_LIM_Pin */
   GPIO_InitStruct.Pin = S1_LIM_Pin|S4_LIM_Pin|S3_LIM_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : S1_ENA_Pin S2_ENA_Pin B4_DIR_Pin S4_DIR_Pin
-                           S3_DIR_Pin */
+                           B3_DIR_Pin */
   GPIO_InitStruct.Pin = S1_ENA_Pin|S2_ENA_Pin|B4_DIR_Pin|S4_DIR_Pin
-                          |S3_DIR_Pin;
+                          |B3_DIR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -1238,20 +1543,27 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : B3_DIR_Pin B2_DIR_Pin B1_DIR_Pin S3_ENA_Pin
+  /*Configure GPIO pins : S3_DIR_Pin B2_DIR_Pin B1_DIR_Pin S3_ENA_Pin
                            S1_DIR_Pin */
-  GPIO_InitStruct.Pin = B3_DIR_Pin|B2_DIR_Pin|B1_DIR_Pin|S3_ENA_Pin
+  GPIO_InitStruct.Pin = S3_DIR_Pin|B2_DIR_Pin|B1_DIR_Pin|S3_ENA_Pin
                           |S1_DIR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : POSSIBLE_ESTOP_Pin S2_LIM_Pin */
-  GPIO_InitStruct.Pin = POSSIBLE_ESTOP_Pin|S2_LIM_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  /*Configure GPIO pins : ESTOP_Pin S2_LIM_Pin */
+  GPIO_InitStruct.Pin = ESTOP_Pin|S2_LIM_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -1263,107 +1575,91 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	// check timer for interrupt
 	if(htim->Instance == TIM6){
 		control_loop = 1;
+		return;
+	}
+	Stepper_Handle_t *s = NULL;
+
+	/* Identify stepper */
+	if (htim->Instance == S1.step_timer->Instance) s = &S1;
+	else if (htim->Instance == S2.step_timer->Instance) s = &S2;
+	else if (htim->Instance == S3.step_timer->Instance) s = &S3;
+	else if (htim->Instance == S4.step_timer->Instance) s = &S4;
+	else return;
+
+	/* If not moving, nothing to do */
+	if (!s->isMoving)
+	    return;
+
+	/* A burst has completed */
+	uint32_t completed = s->last_burst_size;
+
+	s->totalPulses += completed;
+	s->abs_step_count += s->dir * completed;
+
+	/* Preemption check */
+	if (s->pending_preemption)
+	{
+	    s->target_steps = 0;
+	    Stepper_Stop(s);
+	    s->pending_preemption = 0;
+	    return;
 	}
 
-	if (htim->Instance == S1.step_timer->Instance){
-		if(!S1.isMoving) return;
-		S1.step_counter++;
-		S1.abs_step_count += S1.dir;
-		S1.totalPulses++;
-        if (S1.step_counter >= S1.target_steps) {
-        	Stepper_Stop(&S1);
-        	//__HAL_TIM_SET_COMPARE(S1.step_timer, S1.stepper->step_channel, 0);
-            s1_acc_err_pulses += S1.target_steps - S1.step_counter;
-            S1.step_counter = 0;
-            S1.target_steps = 0;
-            S1.absolute_angle = clamp_deg_180_pos(S1.abs_step_count * 360 / S1.steps_per_rev);
-        }
-                     // one full period just elapsed
+	/* More steps remaining? */
+	/* More steps remaining? */
+	if (s->target_steps > completed)
+	{
+	    s->target_steps -= completed;
+
+	    uint32_t next_chunk = (s->target_steps > BURST_SIZE)
+	                        ? BURST_SIZE : s->target_steps;
+	    s->last_burst_size = next_chunk;
+
+	    // Timer is already stopped at this point (fired its last pulse)
+	    // but be explicit
+	    __HAL_TIM_DISABLE(s->step_timer);
+	    __HAL_TIM_DISABLE_IT(s->step_timer, TIM_IT_UPDATE);
+
+	    s->step_timer->Instance->RCR = next_chunk - 1;
+	    __HAL_TIM_SET_COUNTER(s->step_timer, 0);
+
+	    s->step_timer->Instance->EGR = TIM_EGR_UG;
+	    __HAL_TIM_CLEAR_FLAG(s->step_timer, TIM_FLAG_UPDATE);  // clear AFTER EGR
+
+	    // untested for estop:
+	    // If the EXTI E-stop fired while we were doing the math above, abort!
+		if (!s->isMoving) return;
+
+	    __HAL_TIM_ENABLE_IT(s->step_timer, TIM_IT_UPDATE);
+	    __HAL_TIM_ENABLE(s->step_timer);
 	}
-	if (htim->Instance == S2.step_timer->Instance){
-		if(!S2.isMoving) return;
-		S2.step_counter++;
-		S2.abs_step_count  += S2.dir;
-		S2.totalPulses++;
-		if (S2.totalPulses % 13000 == 0){
-					S2.offset = 0*S2.dir;
-				}
-        if (S2.step_counter >= S2.target_steps) {
-        	Stepper_Stop(&S2);
-            S2.step_counter = 0;
-            S2.target_steps = 0;
-            S2.absolute_angle = clamp_deg_180_pos(S2.abs_step_count * 360 / S2.steps_per_rev);
-        }                      // one full period just elapsed
+	else
+	{
+	    s->target_steps = 0;
+	    if (s->correctOffset == 2) {
+	    	s->homing_status = 1;
+	    	s->abs_step_count = 0;
+		    s->correctOffset = 0;
+	    }
+	    //s->totalPulses = 0; //optional
+	    Stepper_Stop(s);
 	}
-	if (htim->Instance == S3.step_timer->Instance){
-		if(!S3.isMoving) return;
-		S3.step_counter++;
-		S3.abs_step_count += S3.dir;
-		S3.totalPulses++;
-		if (S3.totalPulses % 13000 == 0){
-					S3.offset = 0*S3.dir;
-				}
-        if (S3.step_counter >= S3.target_steps) {
-        	Stepper_Stop(&S3);
-            S3.step_counter = 0;
-            S3.target_steps = 0;
-            S3.absolute_angle = clamp_deg_180_pos(S3.abs_step_count * 360 / S3.steps_per_rev);
-        }                          // one full period just elapsed
-	}
-	if (htim->Instance == S4.step_timer->Instance){
-		if(!S4.isMoving) return;
-		S4.step_counter++;
-		S4.abs_step_count += S4.dir;
-		S4.totalPulses++;
-		if (S4.totalPulses % 13000 == 0){
-							S4.offset = 0*S4.dir;
-						}
-        if (S4.step_counter >= S4.target_steps) {
-        	Stepper_Stop(&S4);
-            S4.step_counter = 0;
-            S4.target_steps = 0;
-            S4.absolute_angle = clamp_deg_180_pos(S4.abs_step_count * 360 / S4.steps_per_rev);
-        }                     // one full period just elapsed
-	}
-//	if(htim->Instance == TIM17){
-//		Stepper_Timer_Callback(&stepper_handle_BL);
-//	}
 }
-
-//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-//{
-//    if (huart->Instance == UART5)
-//    {
-//    	callback_flag++;
-//        if (rx_byte == '\n' || rx_byte == '\r' || rx_byte == ';'){
-//       	rx_buf[rx_idx] = '\0';
-//       	handle_command(rx_buf);
-//        rx_idx = 0;
-//        }
-//        else{
-//        	if (rx_idx < rx_buf_size - 1)	rx_buf[rx_idx++] = rx_byte;
-//        	if (rx_idx >= rx_buf_size - 1)	rx_idx = 0;
-//        }
-//    }
-//    HAL_UART_Receive_IT(&huart5, &rx_byte, 1);
-//}
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == UART5)
     {
-    	// 1:
-
     	static uint16_t old_pos = 0;
 		static uint16_t shadow_idx = 0;
 		uint16_t len = 0;
 
-		// 1. Copy chunk from DMA buffer to our accumulator
-		if (Size > old_pos) {
+		// copy chunk from DMA buffer into accumulator
+		if (Size > old_pos) {			// linear buffer
 			len = Size - old_pos;
 			memcpy(&shadow_rx_buf[shadow_idx], &rx_buf[old_pos], len);
 		}
-		else if (Size < old_pos) {
+		else if (Size < old_pos) {		// wrap-around in buffer
 			len = rx_buf_size - old_pos;
 			memcpy(&shadow_rx_buf[shadow_idx], &rx_buf[old_pos], len);
 			memcpy(&shadow_rx_buf[shadow_idx + len], rx_buf, Size);
@@ -1371,24 +1667,19 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 		}
 
 		shadow_idx += len;
-		shadow_rx_buf[shadow_idx] = '\0'; // Seal string
+		shadow_rx_buf[shadow_idx] = '\0'; // seal string
 		old_pos = Size;
 
-		// 2. Find the LAST semicolon in the string
+		// last semi-colon in string
 		char *last_semi = strrchr((char*)shadow_rx_buf, ';');
-
 		if (last_semi != NULL) {
 			uint16_t split_index = (last_semi - (char*)shadow_rx_buf) + 1;
 			uint16_t leftover_len = shadow_idx - split_index;
-
-			// 3. Copy the COMPLETE commands to the main loop's buffer
-			// (If the main loop is slow, this safely overwrites old unread data with the newest ROS data)
-			memcpy(main_cmd_buf, shadow_rx_buf, split_index);
+			memcpy(main_cmd_buf, shadow_rx_buf, split_index);			// copy complete command into main loop's buffer
 			main_cmd_buf[split_index] = '\0';
+			uart_data_ready = 1; // flag main loop
 
-			uart_data_ready = 1; // Flag the main loop
-
-			// 4. Save the incomplete fragment (e.g., " B3 5") for the next interrupt
+			// save the incomplete fragment ("B3 5" instead of "B3 50") for the next interrupt
 			char temp_leftover[64];
 			if (leftover_len > 0) {
 				memcpy(temp_leftover, &shadow_rx_buf[split_index], leftover_len);
@@ -1397,44 +1688,163 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 			shadow_idx = leftover_len;
 			shadow_rx_buf[shadow_idx] = '\0';
 		}
-		else if (shadow_idx >= sizeof(shadow_rx_buf) - 10) {
-			// Safety valve: Buffer full but no semicolon found. Flush it to prevent hardfaults.
-			shadow_idx = 0;
-		}
-
-    	// 2:
-
-//    	static uint16_t old_pos = 0;
-//		uint16_t len = 0;
-//
-//		if (Size > old_pos) {
-//			// data is in a single block
-//			len = Size - old_pos;
-//			memcpy(shadow_rx_buf, &rx_buf[old_pos], len);
-//		}
-//		else {
-//			// data wrapped around the end of rx_buf
-//			len = rx_buf_size - old_pos;
-//			memcpy(shadow_rx_buf, &rx_buf[old_pos], len);
-//			memcpy(&shadow_rx_buf[len], rx_buf, Size);
-//			len += Size;
-//		}
-//
-//		shadow_rx_buf[len] = '\0'; 	// seal the command string
-//		old_pos = Size;            	// update pointer for next Idle event
-//		uart_data_ready = 1;		// let main while calculate baaki ka
-
-    	// 3:
-
-//    	// Copy data immediately before anything can overwrite it
-//		memcpy(shadow_rx_buf, rx_buf, Size);
-//		shadow_rx_buf[Size] = '\0';
-//		uart_data_ready = 1;
-//
-//		// DMA is now free to fill rx_buf again while CPU parses shadow_rx_buf
-//		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
+		else if (shadow_idx >= sizeof(shadow_rx_buf) - 10)
+			shadow_idx = 0;										// full buffer but no semicolons
     }
 }
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART2)
+        {
+
+    	switch (bpill_rx_state) {
+			case 0:		// look for header
+				if (bpill_rx_byte == 0xAA) {
+					bpill_rx_buf[0] = bpill_rx_byte;
+					bpill_rx_state = 1;
+				}
+				break;
+
+			case 1:		// get which mode bot is in
+				bpill_rx_buf[1] = bpill_rx_byte;
+				bpill_rx_state = 2;
+				break;
+
+			case 2:		// verify checksum
+				bpill_rx_buf[2] = bpill_rx_byte;
+				bpill_rx_state = 0;
+				// get actual checksum value
+				uint8_t expected_checksum = bpill_rx_buf[0] ^ bpill_rx_buf[1];
+				if (bpill_rx_buf[2] == expected_checksum) {
+
+//					// in case homing is incomplete (edge case)
+//					if (current_true_mode == MODE_HOMING && !(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status)){
+//						current_true_mode = MODE_HOMING;
+//						break;
+//					}
+
+					prev_rec_mode = rec_mode;
+					rec_mode = bpill_rx_buf[1];					// apply mode if checksum is correct
+					last_bpill_hearbeat = HAL_GetTick();		// valid transmission received
+
+					// edge case if bpill tells me to home
+					if (rec_mode == MODE_HOMING && prev_rec_mode != MODE_HOMING){
+						Stepper_Stop(&S1); Stepper_Stop(&S2);
+						Stepper_Stop(&S3); Stepper_Stop(&S4);
+						S1.totalPulses = 0;
+						S2.totalPulses = 0;
+						S3.totalPulses = 0;
+						S4.totalPulses = 0;
+						S1.homing_status = 0;
+						S2.homing_status = 0;
+						S3.homing_status = 0;
+						S4.homing_status = 0;
+						S1.correctOffset = 0;
+						S2.correctOffset = 0;
+						S3.correctOffset = 0;
+						S4.correctOffset = 0;
+					}
+				}
+				//mode = rec_mode;
+				break;
+		}
+			// re-arm interrupt for next byte
+			HAL_UART_Receive_IT(huart, &bpill_rx_byte, 1);
+        }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == UART5)
+    {
+        uart_tx_ready = 1;
+    }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
+	if (huart->Instance == UART5){
+
+		error_entered++;					// for debugging
+		last_error = huart->ErrorCode;		// check huart5.Instance->ISR in live expressions, might give more info
+
+		// clear flags at error
+		__HAL_UART_CLEAR_OREFLAG(huart);
+		__HAL_UART_CLEAR_NEFLAG(huart);
+		__HAL_UART_CLEAR_FEFLAG(huart);
+
+		// restart UART DMA
+		HAL_UART_AbortReceive(huart);
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);
+	}
+
+	else if (huart->Instance == USART2){
+		// clear flags at error for the bpill link
+		uarterror++;
+		uarterror3_error = huart->ErrorCode;
+		__HAL_UART_CLEAR_OREFLAG(huart);
+		__HAL_UART_CLEAR_NEFLAG(huart);
+		__HAL_UART_CLEAR_FEFLAG(huart);
+
+		// restart the 1-byte interrupt listener
+		HAL_UART_AbortReceive(huart);
+		HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);
+	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+
+	if (GPIO_Pin == ESTOP_Pin){
+		// noise filter: kyuki EMI = BT
+		if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_RESET) {
+			estop_active = 1;
+			b1_target_rpm = b2_target_rpm = b3_target_rpm = b4_target_rpm = 0;
+			PID_Reset(&pid_b1); PID_Reset(&pid_b2); PID_Reset(&pid_b3); PID_Reset(&pid_b4);
+
+			// following is removed because pressing estop mid-stepper rotation caused timer issues causing offset:
+
+//			Stepper_Stop(&S1); Stepper_Stop(&S2); Stepper_Stop(&S3); Stepper_Stop(&S4);
+//			initWQueue(&S1.q); initWQueue(&S2.q); initWQueue(&S3.q); initWQueue(&S4.q);
+		}
+	}
+
+	current_debounce_time = HAL_GetTick();
+
+	if (GPIO_Pin == S1_LIM_Pin){ 						// stepper 1
+		if (S1.homing_status || S1.correctOffset == 2) return; //if already homed, do nothing
+		if (current_debounce_time - last_debounce_time[0] > DEBOUNCE_TIME_PERIOD){
+			last_debounce_time[0] = current_debounce_time;
+			Stepper_Stop(&S1);
+			S1.correctOffset = 1;
+		}
+	}
+	if (GPIO_Pin == S2_LIM_Pin){						// stepper 2
+		if (S2.homing_status || S2.correctOffset == 2) return; //if already homed, do nothing
+		if (current_debounce_time - last_debounce_time[1] > DEBOUNCE_TIME_PERIOD){
+			last_debounce_time[1] = current_debounce_time;
+			Stepper_Stop(&S2);
+			S2.correctOffset = 1;
+
+		}
+	}
+	if (GPIO_Pin == S3_LIM_Pin){						// stepper 3
+		if (S3.homing_status || S3.correctOffset == 2) return;//if already homed, do nothing
+		if (current_debounce_time - last_debounce_time[2] > DEBOUNCE_TIME_PERIOD){
+			last_debounce_time[2] = current_debounce_time;
+			Stepper_Stop(&S3);
+			S3.correctOffset = 1;
+		}
+	}
+	if (GPIO_Pin == S4_LIM_Pin){						// stepper 4
+		if (S4.homing_status || S4.correctOffset == 2) return; //if already homed, do nothing
+		if (current_debounce_time - last_debounce_time[3] > DEBOUNCE_TIME_PERIOD){
+			last_debounce_time[3] = current_debounce_time;
+			Stepper_Stop(&S4);
+			S4.correctOffset = 1;
+		}
+	}
+}
+
 
 /* USER CODE END 4 */
 

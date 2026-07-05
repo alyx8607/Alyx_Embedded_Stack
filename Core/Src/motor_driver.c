@@ -27,124 +27,87 @@ void Motor_Create(Motor_Handle_t* handle, TIM_HandleTypeDef* pwm_timer, uint32_t
 	handle->pwm_channel = pwm_channel;
 	handle->dir_port = dir_port;
 	handle->dir_pin = dir_pin;
+	handle->mode = 1;
 }
 
-//// Akshat parse for scaling:
-//void handle_command(char *cmd)
-//{
-//	const char *p = cmd;
-//
-//	while (*p){
-//
-//		while (*p && (isspace((unsigned char)*p) || *p == ';')) p++;
-//
-//		if (*p == 'b' || *p == 'B'){
-//
-//			p++;
-//			int id = parse_cmd(&p);
-//			int rpm = parse_cmd(&p);
-//
-//			if      (id == 1) b1_target_rpm = rpm;
-//			else if (id == 2) b2_target_rpm = rpm;
-//			else if (id == 3) b3_target_rpm = rpm;
-//			else if (id == 4) b4_target_rpm = rpm;
-//		}
-//
-//		else if (*p == 's' || *p == 'S')
-//		{
-//			p++;
-//			int id = parse_cmd(&p);
-//			int angle = parse_cmd(&p);
-//			//s1_target_angle = angle;
-//			Stepper_Handle_t *S = NULL;
-//
-//			if (id == 1) S = &S1;
-//			else if (id == 2) S = &S2;
-//			else if (id == 3) S = &S3;
-//			else if (id == 4) S = &S4;
-//
-//			if (S)
-//			{
-//				if (angle == (int) S->lastInstruct.degree){
-//					continue;
-//				}
-//
-//					Wrapper temp;
-//					temp.degree = angle;
-//					temp.rpm = 30;
-//					S->lastInstruct.degree = angle;
-//					S->lastInstruct.rpm = temp.rpm;
-//					enqueueW(&S->q, temp);
-//					if (!S->queueMode){
-//						Stepper_Stop(S);
-//						S->step_counter = 0;
-//						S->target_steps = 0;
-//					}
-//			  }		// 5 kiya coz gearbox 5:! he behenchod mujhe nahi khelna
-////                S->target_steps = (uint32_t)(fabsf(angle) * S->steps_per_rev / 360.0f);
-////                S->step_counter = 0;
-////                S->dir = (angle >= 0) ? 0 : 1;
-////                S->recievedStepper = 1;
-//			}
-//		else {
-//			while (*p && !isspace((unsigned char)*p)) p++;
-//		}
-//	}
-//}
-
-// New parser for DMA:
+// Akshat parse for scaling to 8 motors:
 void handle_command(char *cmd)
 {
-    const char *p = cmd;
+	const char *p = cmd;
 
-    while (*p) {
-        // Skip ALL delimiters (spaces, tabs, newlines, and semicolons)
-        // This ensures 'p' always lands on 'B', 'S', or the end of the string.
+	while (*p){
+
     	while (*p && !(*p == 'b' || *p == 'B' || *p == 's' || *p == 'S')) p++;
 
         if (*p == '\0') break;
 
-        if (*p == 'b' || *p == 'B') {
-            p++;
-            int id = parse_cmd(&p);
-            int rpm = parse_cmd(&p);
+		if (*p == 'b' || *p == 'B'){
 
-            if      (id == 1) b1_target_rpm = rpm;
-            else if (id == 2) b2_target_rpm = rpm;
-            else if (id == 3) b3_target_rpm = rpm;
-            else if (id == 4) b4_target_rpm = rpm;
-        }
-        else if (*p == 's' || *p == 'S') {
-            p++;
-            int id = parse_cmd(&p);
-            int angle = parse_cmd(&p);
+			p++;
+			int id = parse_cmd(&p);
+			int rpm = parse_cmd(&p);
 
-            Stepper_Handle_t *S = NULL;
-            if      (id == 1) S = &S1;
-            else if (id == 2) S = &S2;
-            else if (id == 3) S = &S3;
-            else if (id == 4) S = &S4;
+			switch (id) {
+				case 1: b1_target_rpm = rpm; break;
+				case 2: b2_target_rpm = rpm; break;
+				case 3: b3_target_rpm = rpm; break;
+				case 4: b4_target_rpm = rpm; break;
+				default: break;
+			}
+		}
 
-            if (S && (angle != (int)S->lastInstruct.degree)) {
-                Wrapper temp = {.degree = angle, .rpm = 30};
-                S->lastInstruct.degree = angle;
-                S->lastInstruct.rpm = temp.rpm;
-                enqueueW(&S->q, temp);
+		else if (*p == 's' || *p == 'S')
+		{
+			p++;
+			int id = parse_cmd(&p);
+			int angle = parse_cmd(&p);
+			Stepper_Handle_t *S = NULL;
 
-                if (!S->queueMode) {
-                    Stepper_Stop(S);
-                    S->step_counter = 0;
-                    S->target_steps = 0;
-                }
-            }
-        }
-        else {
-            // Safety: If we land on a weird character, move forward by ONE
-            p++;
-        }
-    }
+			switch (id) {
+				case 1: S = &S1; break;
+				case 2: S = &S2; break;
+				case 3: S = &S3; break;
+				case 4: S = &S4; break;
+				default: break;
+			}
+
+			if (S)
+			{
+				if (angle == (int) S->lastInstruct.degree){
+					while (*p && !isspace((unsigned char)*p)) p++;
+					continue;
+				}
+
+					Wrapper temp;
+					temp.degree = angle;
+					temp.rpm = 30;
+					S->lastInstruct.degree = angle;
+					S->lastInstruct.rpm = temp.rpm;
+					if (!S->queueMode){
+						initWQueue(&S->q);
+					}
+					enqueueW(&S->q, temp);
+					if (!S->queueMode){
+						if (!S->pending_preemption && S->isMoving) S->pending_preemption = 1;
+					}
+			  }
+
+			}
+		else p++;		// if we land on weird character
+	}
 }
 
+int parse_mode(char *cmd){
+	char *m_ptr = strchr(cmd, 'M');
+	if(!m_ptr) m_ptr = strchr(cmd, 'm');
+
+	if (m_ptr){
+		m_ptr++;	// skip M/m char
+		const char *parse_ptr = (const char *)m_ptr;
+		return parse_cmd(&parse_ptr);
+	}
+	return -1;	// no mode command found
+}
 
 // pid tuner requirements:
 
@@ -245,9 +208,9 @@ void Motor_SetOutput(Motor_Handle_t* handle, float output) {
 
 	// set direction
 	if (output >= 0.0f) {
-		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_SET); // Forward
+		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_SET); // Forward (defined by the current operating mode)
 	} else {
-		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_RESET); // Reverse
+		HAL_GPIO_WritePin(handle->dir_port, handle->dir_pin, GPIO_PIN_RESET); // Reverse (defined by the current operating mode)
 	}
 
 	// calculate and set PWM

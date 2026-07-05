@@ -63,6 +63,7 @@ void DWT_Init(void);
 /* Private defines -----------------------------------------------------------*/
 #define S1_LIM_Pin GPIO_PIN_13
 #define S1_LIM_GPIO_Port GPIOC
+#define S1_LIM_EXTI_IRQn EXTI15_10_IRQn
 #define S1_ENA_Pin GPIO_PIN_2
 #define S1_ENA_GPIO_Port GPIOC
 #define S2_ENA_Pin GPIO_PIN_3
@@ -87,8 +88,8 @@ void DWT_Init(void);
 #define B4_PWM_GPIO_Port GPIOB
 #define S4_PULSES_Pin GPIO_PIN_2
 #define S4_PULSES_GPIO_Port GPIOB
-#define B3_DIR_Pin GPIO_PIN_12
-#define B3_DIR_GPIO_Port GPIOB
+#define S3_DIR_Pin GPIO_PIN_12
+#define S3_DIR_GPIO_Port GPIOB
 #define B2_DIR_Pin GPIO_PIN_13
 #define B2_DIR_GPIO_Port GPIOB
 #define S2_PULSES_Pin GPIO_PIN_14
@@ -101,8 +102,8 @@ void DWT_Init(void);
 #define E4_A_GPIO_Port GPIOC
 #define S4_DIR_Pin GPIO_PIN_8
 #define S4_DIR_GPIO_Port GPIOC
-#define S3_DIR_Pin GPIO_PIN_9
-#define S3_DIR_GPIO_Port GPIOC
+#define B3_DIR_Pin GPIO_PIN_9
+#define B3_DIR_GPIO_Port GPIOC
 #define E1_A_Pin GPIO_PIN_8
 #define E1_A_GPIO_Port GPIOA
 #define E1_B_Pin GPIO_PIN_9
@@ -113,23 +114,34 @@ void DWT_Init(void);
 #define E3_B_GPIO_Port GPIOA
 #define E3_A_Pin GPIO_PIN_12
 #define E3_A_GPIO_Port GPIOA
+#define BPill_RX_Pin GPIO_PIN_15
+#define BPill_RX_GPIO_Port GPIOA
 #define S4_LIM_Pin GPIO_PIN_10
 #define S4_LIM_GPIO_Port GPIOC
+#define S4_LIM_EXTI_IRQn EXTI15_10_IRQn
 #define S3_LIM_Pin GPIO_PIN_11
 #define S3_LIM_GPIO_Port GPIOC
+#define S3_LIM_EXTI_IRQn EXTI15_10_IRQn
+#define ROS_TX_Pin GPIO_PIN_12
+#define ROS_TX_GPIO_Port GPIOC
+#define ROS_RX_Pin GPIO_PIN_2
+#define ROS_RX_GPIO_Port GPIOD
+#define BPill_TX_Pin GPIO_PIN_3
+#define BPill_TX_GPIO_Port GPIOB
 #define S3_PULSES_Pin GPIO_PIN_4
 #define S3_PULSES_GPIO_Port GPIOB
-#define POSSIBLE_ESTOP_Pin GPIO_PIN_5
-#define POSSIBLE_ESTOP_GPIO_Port GPIOB
+#define ESTOP_Pin GPIO_PIN_5
+#define ESTOP_GPIO_Port GPIOB
+#define ESTOP_EXTI_IRQn EXTI9_5_IRQn
 #define S3_ENA_Pin GPIO_PIN_6
 #define S3_ENA_GPIO_Port GPIOB
 #define S2_LIM_Pin GPIO_PIN_7
 #define S2_LIM_GPIO_Port GPIOB
+#define S2_LIM_EXTI_IRQn EXTI9_5_IRQn
 #define S1_DIR_Pin GPIO_PIN_8
 #define S1_DIR_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
