@@ -9,6 +9,8 @@
 #include "main.h"
 #include <math.h>
 
+volatile uint8_t pid_legacy_zerospeed = 0;
+
 void PID_Create(PID_Handle_t* handle, float kp, float ki, float kd, float sample_time_s){
 
 	if (handle == NULL) return;
@@ -35,9 +37,16 @@ float PID_Compute(PID_Handle_t* handle, float setpoint, float measurement){
 
 	if (handle == NULL) return 0.0f;
 
-	if (fabsf(measurement) < handle->deadband_measurement) measurement = 0.0f;		// measurement deadband for jitters
-	bool target_zero = fabsf(setpoint) <= handle->deadband_setpoint;
-	if (target_zero) setpoint = 0.0f;												// make change based on cmd_vel working
+	bool target_zero;
+	if (pid_legacy_zerospeed) {
+		/* historical implementation: no deadbands at all */
+		target_zero = (setpoint == 0.0f);
+	} else {
+		if (fabsf(measurement) < handle->deadband_measurement) measurement = 0.0f;		// measurement deadband for jitters
+		target_zero = fabsf(setpoint) <= handle->deadband_setpoint;
+		if (target_zero) setpoint = 0.0f;												// make change based on cmd_vel working
+	}
+											// make change based on cmd_vel working
 
 	// for dt:
 	float dt = handle->sample_time_s;		// ideal dt
@@ -59,10 +68,14 @@ float PID_Compute(PID_Handle_t* handle, float setpoint, float measurement){
 	if (!target_zero){
 		handle->integral_sum += handle->ki * error * dt;
 	}
+	else if (pid_legacy_zerospeed) {
+		handle->integral_sum = 0.0f;			/* hard reset: the old way */
+	}
 	else {
 		handle->integral_sum *= handle->integral_decay;
 		if (fabsf(handle->integral_sum) < 0.0001f) handle->integral_sum = 0.0f;
 	}
+
 	// anti-windup logic (trying windup as well pata nahi chalega ya nahi):
 	if ((handle->integral_sum) > (handle->out_max))handle->integral_sum = handle->out_max;
 	if ((handle->integral_sum) < (handle->out_min))handle->integral_sum = handle->out_min;
