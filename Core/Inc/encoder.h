@@ -29,11 +29,6 @@ typedef struct {
     int32_t last_count;
     float speed_rpm;
     MA_calc calculator;
-    /* bench-test instrumentation */
-    uint16_t dbg_raw;
-    int16_t  dbg_delta;
-    uint32_t dbg_dt_ms;
-    float    dbg_rpm_raw;   /* pre-filter */
 } Encoder_Handle_t;
 
 void Encoder_Create(Encoder_Handle_t* handle, TIM_HandleTypeDef* timer, float counts_per_rev);
