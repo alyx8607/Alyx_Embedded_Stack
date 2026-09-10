@@ -42,6 +42,29 @@
  */
 #define TEST_BENCH_MODE 0
 
+/* ---- BENCH: serial-triggered re-homing ------------------------------------
+ * Normally HOMING can only be selected by the rotary mode switch / Black Pill,
+ * never over the ROS2 serial link, because HOMING drives a stepper toward a
+ * mechanical hard stop with nobody necessarily watching.
+ *
+ * The rotary switch is dead and the steering-drift experiment needs repeated
+ * re-homes, so this flag temporarily opens that door for a SUPERVISED bench
+ * session. ESTOP stays excluded either way.
+ *
+ * 0 = shipping behaviour (HOMING refused over serial)
+ * 1 = "M1;" accepted.  >>> REVERT TO 0 AFTER THE SESSION <<<
+ *
+ * MODE_HOMING is 0x01 in the MODES enum below, so the command is "M1;".
+ */
+#define BENCH_ALLOW_SERIAL_HOMING 1
+
+/* Which module re-homes on a serial HOMING request.
+ * 0    = all four, exactly like boot homing
+ * 1..4 = only that module (the other three keep homing_status = 1, so their
+ *        homing blocks are skipped and they never move). Keep this equal to
+ *        TEL_WHEEL and to the logger's --wheel. */
+#define BENCH_HOMING_WHEEL 1
+
 /* UART5 is the ROS link. In a telemetry run the logger owns it instead, so
  * the ROS feedback string is suppressed to stop it fighting the DMA. */
 #define TELEMETRY_OWNS_UART5 1
@@ -266,6 +289,32 @@ volatile MODES ros2_mode = MODE_HOMING;
 MODES current_true_mode = MODE_HOMING;	// so that nucleo sends wired estop to bpill
 MODES last_sent_mode = (MODES)0xFF;		// warning: could be fucky?
 
+#if BENCH_ALLOW_SERIAL_HOMING
+/* Arm a re-home. Entering MODE_HOMING is not enough on its own: after boot
+ * homing every module has homing_status = 1, and the MODE_HOMING case skips
+ * any module that is already homed, so without this the vehicle would sit in
+ * HOMING doing nothing at all. This mirrors what the Black Pill path already
+ * does when it sees a HOMING transition. */
+static void bench_arm_rehome(void)
+{
+	Stepper_Handle_t *mods[4] = { &S1, &S2, &S3, &S4 };
+	for (int i_m = 0; i_m < 4; i_m++){
+#if BENCH_HOMING_WHEEL != 0
+		if ((i_m + 1) != BENCH_HOMING_WHEEL) continue;
+#endif
+		Stepper_Stop(mods[i_m]);
+		initWQueue(&mods[i_m]->q);
+		mods[i_m]->pending_preemption = 0;
+		mods[i_m]->totalPulses   = 0;
+		mods[i_m]->homing_status = 0;
+		mods[i_m]->correctOffset = 0;
+		/* sentinel so the next absolute steering command is not swallowed by
+		 * the "same as lastInstruct" shortcut in handle_command() */
+		mods[i_m]->lastInstruct.degree = 9999.0f;
+	}
+}
+#endif
+
 //float map_rpm_to_signal(float rpm) {
 //
 //    if (rpm > 100.0f) return 0.8f;
@@ -483,25 +532,49 @@ int main(void)
 			  }
 		  }
 
+		  /* bench: scenario tag, "#SCN <n>;" -- wires the logger's tag into
+		   * the telemetry so trials are self-labelling in the CSV. */
+		  {
+		  	char *sc = strstr(main_cmd_buf, "#SCN");
+		  	if (!sc) sc = strstr(main_cmd_buf, "#scn");
+		  	if (sc) {
+		  		const char *sp_ = (const char *)(sc + 4);
+		  		tel_set_scenario((uint8_t)parse_cmd(&sp_));
+		  	}
+		  }
+
 		  int new_mode = parse_mode(main_cmd_buf);
 
 
 		  if (new_mode >= 0 && new_mode <= 5){
 
-			  // Ignore ESTOP and homing commands from ROS2
-			  if (new_mode != MODE_ESTOP && new_mode != MODE_HOMING) {
-				  if (!homing_active){
-					  ros2_mode = (MODES)new_mode;
-				  }
-			  }
+		  #if BENCH_ALLOW_SERIAL_HOMING
+		      /* BENCH ONLY: ESTOP still refused, HOMING temporarily allowed. */
+		      if (new_mode != MODE_ESTOP) {
+		          if (!homing_active){
+		              if (new_mode == MODE_HOMING && ros2_mode != MODE_HOMING){
+		                  bench_arm_rehome();
+		              }
+		              ros2_mode = (MODES)new_mode;
+		          }
+		      }
+		  #else
+		      // Ignore ESTOP and homing commands from ROS2
+		      if (new_mode != MODE_ESTOP && new_mode != MODE_HOMING) {
+		          if (!homing_active){
+		              ros2_mode = (MODES)new_mode;
+		          }
+		      }
+		  #endif
 
-			  if (estop_active || wireless_estop_active){
-			  //if (estop_active) {
-				  current_true_mode = MODE_ESTOP;
-			  }
-			  else {
-				  current_true_mode = ros2_mode;
-			  }
+		      // MATCHED TO TOP OF LOOP: wireless_estop_active intentionally ignored here
+		      // so missing Black Pill does not trigger 1-loop E-stops on M-commands.
+		      if (estop_active){
+		          current_true_mode = MODE_ESTOP;
+		      }
+		      else {
+		          current_true_mode = ros2_mode;
+		      }
 		  }
 		  // motor parser runs only in safe driving mode
 		  if (current_true_mode == MODE_TELEOP ||
@@ -555,7 +628,7 @@ int main(void)
 		  }
 		}
 
-		  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET && !wireless_estop_active) {
+		  if (HAL_GPIO_ReadPin(ESTOP_GPIO_Port, ESTOP_Pin) == GPIO_PIN_SET) {
 			  estop_active = 0;
 			  estop_action_done = 0;		// for releasing locked steppers at zero on e-stop
 
