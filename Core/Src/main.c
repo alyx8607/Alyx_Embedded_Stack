@@ -26,28 +26,11 @@
 #include "pid_controller.h"
 #include "Stepperv2.h"
 #include "globals.h"
-#include "telemetry.h"
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>   // isspace
 #include <stdlib.h>  // strtol & strtof
 #include <math.h>
-/* ---- TELEMETRY BUILD ------------------------------------------------------
- * Running on the complete vehicle, so homing, the limit switches and the
- * safety board all work normally. We are NOT bypassing any of that.
- *
- * TEST_BENCH_MODE 0 = normal vehicle behaviour (what you want)
- * TEST_BENCH_MODE 1 = escape hatch only, if the Black Pill link dies mid
- *                     session and you would otherwise lose the slot.
- */
-#define TEST_BENCH_MODE 0
-
-/* UART5 is the ROS link. In a telemetry run the logger owns it instead, so
- * the ROS feedback string is suppressed to stop it fighting the DMA. */
-#define TELEMETRY_OWNS_UART5 1
-
-/* Which wheel gets logged. Must match --wheel on the logger. 1..4 */
-#define TEL_WHEEL 1
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -399,15 +382,6 @@ int main(void)
 
   HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);	// for incoming ros commands
   HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);					// listen to black pill for mode instructions
-
-  tel_init((float)ENCODERS_CPR);
-
-#if TEST_BENCH_MODE
-  homing_active = 0;            /* escape hatch only, see Patch 5 */
-  ros2_mode     = MODE_TELEOP;
-  rec_mode      = MODE_TELEOP;
-#endif
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -424,13 +398,7 @@ int main(void)
 	  if (homing_active && ros2_mode == MODE_HOMING){
 		  heartbeat_timeout = 0;
 	  }
-
-#if TEST_BENCH_MODE
-	  heartbeat_timeout = 0;              /* escape hatch only */
-	  last_bpill_hearbeat = HAL_GetTick();
-#endif
 	  wireless_estop_active = (heartbeat_timeout) || (rec_mode == MODE_ESTOP);
-
 
 	  // NUCLEO owns mode
 //	  if (estop_active || wireless_estop_active) {
@@ -453,38 +421,16 @@ int main(void)
 	  if ((last_sent_mode != current_true_mode) || (HAL_GetTick() - last_mode_tx > 100)){				// telemetry and safety comms
 		  bpill_tx_buf[0] = 0xAA;
 		  bpill_tx_buf[1] = current_true_mode;
-		  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];		  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
+		  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
 		  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
-#if !TELEMETRY_OWNS_UART5
 		  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
-#endif
-
-
 		  last_sent_mode = current_true_mode;
 		  last_mode_tx = HAL_GetTick();
 	  }
 
 	  if (uart_data_ready){
 		  uart_data_ready = 0;
-
-		  /* bench: runtime zero-speed A/B toggle, "Z0;" or "Z1;" */
-		  {
-			  char *z = strchr(main_cmd_buf, 'Z');
-			  if (!z) z = strchr(main_cmd_buf, 'z');
-			  if (z) {
-				  const char *zp = (const char *)(z + 1);
-				  uint8_t want = (parse_cmd(&zp) != 0);
-				  if (want != pid_legacy_zerospeed) {
-					  pid_legacy_zerospeed = want;
-					  /* clear integrator state so conditions do not bleed */
-					  PID_Reset(&pid_b1); PID_Reset(&pid_b2);
-					  PID_Reset(&pid_b3); PID_Reset(&pid_b4);
-				  }
-			  }
-		  }
-
 		  int new_mode = parse_mode(main_cmd_buf);
-
 
 		  if (new_mode >= 0 && new_mode <= 5){
 
@@ -758,43 +704,38 @@ int main(void)
 				Motor_SetOutput(&B4, b4_control_signal);
 			}
 
-			/* ---- bench telemetry ---- */
-			{
-#if   TEL_WHEEL == 1
-				Encoder_Handle_t *TE = &E1; PID_Handle_t *TP = &pid_b1;
-				float TS = (float)((float)B1.mode ? -b1_target_rpm : b1_target_rpm);
-				float TO = b1_control_signal; float TM = b1_current_rpm;
-				Stepper_Handle_t *TST = &S1;
-#elif TEL_WHEEL == 2
-				Encoder_Handle_t *TE = &E2; PID_Handle_t *TP = &pid_b2;
-				float TS = (float)((float)B2.mode ? b2_target_rpm : -b2_target_rpm);
-				float TO = b2_control_signal; float TM = b2_current_rpm;
-				Stepper_Handle_t *TST = &S2;
-#elif TEL_WHEEL == 3
-				Encoder_Handle_t *TE = &E3; PID_Handle_t *TP = &pid_b3;
-				float TS = (float)((float)B3.mode ? -b3_target_rpm : b3_target_rpm);
-				float TO = b3_control_signal; float TM = b3_current_rpm;
-				Stepper_Handle_t *TST = &S3;
-#else
-				Encoder_Handle_t *TE = &E4; PID_Handle_t *TP = &pid_b4;
-				float TS = (float)((float)B4.mode ? -b4_target_rpm : b4_target_rpm);
-				float TO = b4_control_signal; float TM = b4_current_rpm;
-				Stepper_Handle_t *TST = &S4;
-#endif
-				uint8_t HS = (uint8_t)(TST->homing_status
-				                     | (TST->correctOffset << 1)
-				                     | (pid_legacy_zerospeed << 4));
+			if (HAL_GetTick() - lastTransmissionTime >= 1000/feedback_transmission_freq){
+//					 if (last_sent_mode != mode){
+//
+//						  bpill_tx_buf[0] = 0xAA;
+//						  bpill_tx_buf[1] = (uint8_t)mode;
+//						  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
+//						  //HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+//						  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
+//						  //sending_mode++;		// remove after testing
+//						  last_sent_mode = mode;
+//					 }
 
-				tel_push(TE->dbg_raw, TE->dbg_delta, TE->dbg_dt_ms,
-				         TE->dbg_rpm_raw, TM,
-				         TS, TO, TP->integral_sum,
-				         TST->abs_step_count,
-				         (uint32_t)TST->totalPulses, HS);
+				 if (uart_tx_ready)
+				 {
+					int tel_len = snprintf((char*)feedback_buf, feedback_buf_size,
+											"@S1%ld;S2%ld;S3%ld;S4%ld;"
+											//"B1%.4f;B2%.4f;B3%.4f;B4%.4f;"
+											"B1%d;B2%d;B3%d;B4%d;\r\n",
+											S1.abs_step_count, S2.abs_step_count,
+											S3.abs_step_count, S4.abs_step_count,
+											//Encoder_GetSpeedRPM(&E1), Encoder_GetSpeedRPM(&E2),
+											//Encoder_GetSpeedRPM(&E3), Encoder_GetSpeedRPM(&E4)
+											b1_target_rpm, b2_target_rpm,
+											b3_target_rpm, b4_target_rpm);
+					 if (HAL_UART_Transmit_DMA(&huart5, feedback_buf, tel_len) == HAL_OK){
+						 uart_tx_ready = 0;
+						 lastTransmissionTime = HAL_GetTick();
+					 }
+				 }
 			}
-
 			control_loop = 0;
 		}
-		tel_service(&huart5);
 
     /* USER CODE END WHILE */
 
@@ -1450,7 +1391,7 @@ static void MX_UART5_Init(void)
 
   /* USER CODE END UART5_Init 1 */
   huart5.Instance = UART5;
-  huart5.Init.BaudRate = 921600;
+  huart5.Init.BaudRate = 115200;
   huart5.Init.WordLength = UART_WORDLENGTH_8B;
   huart5.Init.StopBits = UART_STOPBITS_1;
   huart5.Init.Parity = UART_PARITY_NONE;
@@ -1634,7 +1575,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	// check timer for interrupt
 	if(htim->Instance == TIM6){
 		control_loop = 1;
-		tel_mark_isr();
 		return;
 	}
 	Stepper_Handle_t *s = NULL;
@@ -1819,9 +1759,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     if (huart->Instance == UART5)
     {
         uart_tx_ready = 1;
-        tel_tx_done();
     }
-
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){

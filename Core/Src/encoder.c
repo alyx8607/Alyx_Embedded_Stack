@@ -143,21 +143,10 @@ float Encoder_GetSpeedRPM(Encoder_Handle_t* handle){
     // Dynamic RPM calculation: (Delta / CPR) * (60,000ms / dt_ms)
     float rpm_f = (((float)delta * 60000.0f) / (float)dt_ms) / handle->counts_per_rev;
 
-//    handle->speed_rpm = calc_MA(&handle->calculator, rpm_f);
-//
-//    handle->last_count = current;
-//    handle->prev_time = now;
-
-    handle->dbg_raw     = (uint16_t)current;
-    handle->dbg_delta   = delta_16;
-    handle->dbg_dt_ms   = dt_ms;
-    handle->dbg_rpm_raw = rpm_f;
-
     handle->speed_rpm = calc_MA(&handle->calculator, rpm_f);
 
     handle->last_count = current;
     handle->prev_time = now;
-
 
     return handle->speed_rpm;
 }

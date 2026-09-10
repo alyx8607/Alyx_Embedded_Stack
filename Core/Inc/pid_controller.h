@@ -11,11 +11,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Bench experiment: 1 restores the pre-2025 zero-speed behaviour
- * (hard integral reset, no deadbands). Toggled at runtime with "Z0;"/"Z1;".
- * Always 0 at boot, so a stray build can never ship in legacy mode. */
-extern volatile uint8_t pid_legacy_zerospeed;
-
 typedef struct{
 	// tunings
 	float kp;
