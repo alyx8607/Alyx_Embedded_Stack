@@ -26,11 +26,28 @@
 #include "pid_controller.h"
 #include "Stepperv2.h"
 #include "globals.h"
+#include "telemetry.h"
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>   // isspace
 #include <stdlib.h>  // strtol & strtof
 #include <math.h>
+
+/* ---- TELEMETRY v2 BUILD (fake-ALYX validation session) --------------------
+ * Full vehicle: homing, limit switches and the safety board work normally.
+ *
+ * TELEMETRY_OWNS_UART5 1: UART5 runs at 921600 and carries telemetry v2 rows
+ *   (Core/Src/telemetry.c). The "@" ROS feedback and the 3-byte mode echo on
+ *   UART5 are off, so nothing else writes to that port. Commands still come in
+ *   on UART5 in the usual "S1 <deg>; B1 <rpm>;" format, plus "#SCN <n>;" tags.
+ *   NOTE: the baud rate is set in MX_UART5_Init and Alyx_Stack.ioc (921600);
+ *   set both back to 115200 for the normal ROS build.
+ * TEST_BENCH_MODE 1: escape hatch only, if the Black Pill link dies mid-session.
+ *   It ignores the Black Pill heartbeat, i.e. the WIRELESS E-STOP IS OFF.
+ *   Wired e-stop still works. Leave at 0.
+ */
+#define TELEMETRY_OWNS_UART5 1
+#define TEST_BENCH_MODE 1	// set 1 if no bpill for heartbeat
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -134,7 +151,8 @@ volatile uint8_t callback_flag = 0;
 uint8_t feedback_buf[feedback_buf_size];
 volatile uint8_t uart_data_ready = 0;
 uint8_t shadow_rx_buf[rx_buf_size * 2]; // This is the CPU's private copy: large to hold accumulations
-char main_cmd_buf[128];                 // The CPU parses this in the while(1) loop
+char main_cmd_buf[256];                 // The CPU parses this in the while(1) loop
+char cmd_work_buf[256];                 // main loop's private copy (telemetry build)
 uint32_t lastTransmissionTime = 0;
 
 // UART stop waala error (YOU ARE T) lololol
@@ -382,6 +400,12 @@ int main(void)
 
   HAL_UARTEx_ReceiveToIdle_DMA(&huart5, rx_buf, rx_buf_size);	// for incoming ros commands
   HAL_UART_Receive_IT(&huart2, &bpill_rx_byte, 1);					// listen to black pill for mode instructions
+
+  tel_init();
+
+#if TEST_BENCH_MODE
+  rec_mode = MODE_TELEOP;
+#endif
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -398,6 +422,10 @@ int main(void)
 	  if (homing_active && ros2_mode == MODE_HOMING){
 		  heartbeat_timeout = 0;
 	  }
+#if TEST_BENCH_MODE
+	  heartbeat_timeout = 0;              /* escape hatch only */
+	  last_bpill_hearbeat = HAL_GetTick();
+#endif
 	  wireless_estop_active = (heartbeat_timeout) || (rec_mode == MODE_ESTOP);
 
 	  // NUCLEO owns mode
@@ -423,14 +451,43 @@ int main(void)
 		  bpill_tx_buf[1] = current_true_mode;
 		  bpill_tx_buf[2] = bpill_tx_buf[0] ^ bpill_tx_buf[1];
 		  HAL_UART_Transmit(&huart2, bpill_tx_buf, 3, 10);
+#if !TELEMETRY_OWNS_UART5
 		  HAL_UART_Transmit(&huart5, bpill_tx_buf, 3, 10);
+#endif
 		  last_sent_mode = current_true_mode;
 		  last_mode_tx = HAL_GetTick();
 	  }
 
 	  if (uart_data_ready){
+#if TELEMETRY_OWNS_UART5
+		  // at 921600 a new chunk can arrive before this block runs: the RX
+		  // callback appends to main_cmd_buf while uart_data_ready is set, and
+		  // we take the whole block atomically here
+		  __disable_irq();
+		  strcpy(cmd_work_buf, main_cmd_buf);
+		  main_cmd_buf[0] = '\0';
 		  uart_data_ready = 0;
-		  int new_mode = parse_mode(main_cmd_buf);
+		  __enable_irq();
+		  char *scn = strstr(cmd_work_buf, "#SCN");
+		  if (scn) {
+			  const char *sp = (const char *)(scn + 4);
+			  tel_set_scenario((uint8_t)parse_cmd(&sp));
+		  }
+		  // frame tags "#F <n>;": note the last one (several may be in one block)
+		  {
+			  char *fr = NULL, *q = cmd_work_buf;
+			  while ((q = strstr(q, "#F")) != NULL) { fr = q; q += 2; }
+			  if (fr) {
+				  const char *fp = (const char *)(fr + 2);
+				  tel_note_frame((uint16_t)parse_cmd(&fp));
+			  }
+		  }
+		  char *cmd_buf = cmd_work_buf;
+#else
+		  uart_data_ready = 0;
+		  char *cmd_buf = main_cmd_buf;
+#endif
+		  int new_mode = parse_mode(cmd_buf);
 
 		  if (new_mode >= 0 && new_mode <= 5){
 
@@ -453,9 +510,9 @@ int main(void)
 		  if (current_true_mode == MODE_TELEOP ||
 			  current_true_mode == MODE_AUTONAV ||
 			  current_true_mode == MODE_SELFDRIVE){
-			  handle_command(main_cmd_buf);
+			  handle_command(cmd_buf);
 		  }
-		  main_cmd_buf[0] = '\0';
+		  cmd_buf[0] = '\0';
 	  }
 
 	  switch(current_true_mode){
@@ -539,15 +596,19 @@ int main(void)
 
 		  if(!S1.homing_status && !S1.isMoving && !S1.totalPulses){
 			  moveAngle(&S1, -360, 10);
+			  tel_homing_sweep_start(0);
 		  }
 		  if(!S2.homing_status && !S2.isMoving && !S2.totalPulses){
 			  moveAngle(&S2, -360, 10);
+			  tel_homing_sweep_start(1);
 		  }
 		  if(!S3.homing_status && !S3.isMoving && !S3.totalPulses){
 			  moveAngle(&S3, -360, 10);
+			  tel_homing_sweep_start(2);
 		  }
 		  if(!S4.homing_status && !S4.isMoving && !S4.totalPulses){
 			  moveAngle(&S4, -360, 10);
+			  tel_homing_sweep_start(3);
 		  }
 		  if(S1.homing_status && S2.homing_status && S3.homing_status && S4.homing_status){
 			  //ros2_mode = MODE_IDLE;	// go idle post homing
@@ -704,6 +765,32 @@ int main(void)
 				Motor_SetOutput(&B4, b4_control_signal);
 			}
 
+#if TELEMETRY_OWNS_UART5
+			{
+				tel_wheel_t tw[4];
+				Encoder_Handle_t *te[4] = {&E1, &E2, &E3, &E4};
+				Stepper_Handle_t *ts[4] = {&S1, &S2, &S3, &S4};
+				Motor_Handle_t *tb[4] = {&B1, &B2, &B3, &B4};
+				float trpm[4] = {b1_current_rpm, b2_current_rpm, b3_current_rpm, b4_current_rpm};
+				int ttgt[4] = {b1_target_rpm, b2_target_rpm, b3_target_rpm, b4_target_rpm};
+				float tout[4] = {b1_control_signal, b2_control_signal, b3_control_signal, b4_control_signal};
+				for (int k = 0; k < 4; k++) {
+					tw[k].enc_raw = (uint16_t)te[k]->last_count;
+					tw[k].rpm_filt = trpm[k];
+					tw[k].target_rpm = (int16_t)ttgt[k];
+					tw[k].out = (current_true_mode == MODE_ESTOP) ? 0.0f : tout[k];
+					tw[k].abs_step = (int32_t)ts[k]->abs_step_count;
+					tw[k].cmd_deg = (int16_t)ts[k]->lastInstruct.degree;
+					tw[k].flags = (tb[k]->mode ? TEL_FL_MODE : 0)
+					            | (ts[k]->isMoving ? TEL_FL_MOVING : 0)
+					            | (ts[k]->pending_preemption ? TEL_FL_PREEMPT : 0)
+					            | (ts[k]->homing_status ? TEL_FL_HOMED : 0)
+					            | (ts[k]->correctOffset ? TEL_FL_OFFSET : 0);
+				}
+				tel_push4(tw, (uint8_t)current_true_mode,
+				          (uint8_t)((estop_active ? 1 : 0) | (wireless_estop_active ? 2 : 0)));
+			}
+#else
 			if (HAL_GetTick() - lastTransmissionTime >= 1000/feedback_transmission_freq){
 //					 if (last_sent_mode != mode){
 //
@@ -734,8 +821,12 @@ int main(void)
 					 }
 				 }
 			}
+#endif
 			control_loop = 0;
 		}
+#if TELEMETRY_OWNS_UART5
+		tel_service(&huart5);
+#endif
 
     /* USER CODE END WHILE */
 
@@ -1391,7 +1482,7 @@ static void MX_UART5_Init(void)
 
   /* USER CODE END UART5_Init 1 */
   huart5.Instance = UART5;
-  huart5.Init.BaudRate = 115200;
+  huart5.Init.BaudRate = 921600;
   huart5.Init.WordLength = UART_WORDLENGTH_8B;
   huart5.Init.StopBits = UART_STOPBITS_1;
   huart5.Init.Parity = UART_PARITY_NONE;
@@ -1575,6 +1666,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	// check timer for interrupt
 	if(htim->Instance == TIM6){
 		control_loop = 1;
+		tel_mark_isr();
 		return;
 	}
 	Stepper_Handle_t *s = NULL;
@@ -1675,8 +1767,16 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 		if (last_semi != NULL) {
 			uint16_t split_index = (last_semi - (char*)shadow_rx_buf) + 1;
 			uint16_t leftover_len = shadow_idx - split_index;
+#if TELEMETRY_OWNS_UART5
+			// main loop has not taken the previous block yet: append, don't overwrite
+			uint16_t keep = uart_data_ready ? (uint16_t)strlen(main_cmd_buf) : 0;
+			if (keep + split_index >= sizeof(main_cmd_buf)) keep = 0;	// overflow: newest wins
+			memcpy(&main_cmd_buf[keep], shadow_rx_buf, split_index);
+			main_cmd_buf[keep + split_index] = '\0';
+#else
 			memcpy(main_cmd_buf, shadow_rx_buf, split_index);			// copy complete command into main loop's buffer
 			main_cmd_buf[split_index] = '\0';
+#endif
 			uart_data_ready = 1; // flag main loop
 
 			// save the incomplete fragment ("B3 5" instead of "B3 50") for the next interrupt
@@ -1759,6 +1859,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     if (huart->Instance == UART5)
     {
         uart_tx_ready = 1;
+        tel_tx_done();
     }
 }
 
@@ -1816,6 +1917,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_debounce_time[0] = current_debounce_time;
 			Stepper_Stop(&S1);
 			S1.correctOffset = 1;
+			tel_homing_switch(0);
 		}
 	}
 	if (GPIO_Pin == S2_LIM_Pin){						// stepper 2
@@ -1824,6 +1926,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_debounce_time[1] = current_debounce_time;
 			Stepper_Stop(&S2);
 			S2.correctOffset = 1;
+			tel_homing_switch(1);
 
 		}
 	}
@@ -1833,6 +1936,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_debounce_time[2] = current_debounce_time;
 			Stepper_Stop(&S3);
 			S3.correctOffset = 1;
+			tel_homing_switch(2);
 		}
 	}
 	if (GPIO_Pin == S4_LIM_Pin){						// stepper 4
@@ -1841,6 +1945,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			last_debounce_time[3] = current_debounce_time;
 			Stepper_Stop(&S4);
 			S4.correctOffset = 1;
+			tel_homing_switch(3);
 		}
 	}
 }
